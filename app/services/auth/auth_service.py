@@ -9,6 +9,8 @@ import redis
 import json
 import jwt
 from jwt.exceptions import InvalidTokenError as JWTError
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 from app.core.config import settings
 from app.models.user import User, VerificationCode
@@ -258,4 +260,57 @@ def get_auth_service() -> AuthService:
     if _auth_service is None:
         _auth_service = AuthService()
     return _auth_service
+
+
+# HTTP Bearer 安全方案
+security = HTTPBearer(auto_error=False)
+
+
+async def get_current_user_id(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)
+) -> str:
+    """
+    从 JWT token 中获取当前用户 ID（FastAPI 依赖）
+    
+    Args:
+        credentials: HTTP Authorization credentials
+        
+    Returns:
+        str: 用户 ID
+        
+    Raises:
+        HTTPException: 如果 token 无效或缺失
+    """
+    # 如果没有提供 token，返回 401
+    if not credentials:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="未提供认证凭据",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    token = credentials.credentials
+    
+    # 解码 token
+    auth_service = get_auth_service()
+    payload = auth_service.decode_access_token(token)
+    
+    if not payload:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="无效的认证凭据",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    # 从 payload 中提取用户 ID
+    user_id: Optional[str] = payload.get("sub")
+    
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="无效的 token payload",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    return user_id
 
