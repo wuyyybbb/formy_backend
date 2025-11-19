@@ -2,6 +2,9 @@
 fastapi==0.104.1
 uvicorn[standard]==0.24.0
 
+# 生产服务器
+gunicorn==21.2.0
+
 # 数据验证（升级到支持 Python 3.13 的版本）
 pydantic>=2.10.0
 pydantic-settings>=2.6.0
