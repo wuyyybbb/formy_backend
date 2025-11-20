@@ -23,23 +23,47 @@ class AuthService:
     def __init__(self):
         """初始化认证服务"""
         try:
-            self.redis_client = redis.Redis(
-                host=settings.REDIS_HOST,
-                port=settings.REDIS_PORT,
-                db=settings.REDIS_DB,
-                password=settings.REDIS_PASSWORD,
-                decode_responses=True,
-                socket_connect_timeout=5,
-                socket_timeout=5
-            )
+            # 优先使用 REDIS_URL（云平台推荐）
+            if settings.REDIS_URL:
+                print(f"🔧 使用 REDIS_URL 连接: {settings.REDIS_URL[:20]}...")
+                self.redis_client = redis.from_url(
+                    settings.REDIS_URL,
+                    decode_responses=True,
+                    socket_connect_timeout=5,
+                    socket_timeout=5
+                )
+            else:
+                # 使用分散配置
+                print(f"🔧 使用分散配置连接 Redis: {settings.REDIS_HOST}:{settings.REDIS_PORT}")
+                self.redis_client = redis.Redis(
+                    host=settings.REDIS_HOST,
+                    port=settings.REDIS_PORT,
+                    db=settings.REDIS_DB,
+                    password=settings.REDIS_PASSWORD,
+                    decode_responses=True,
+                    socket_connect_timeout=5,
+                    socket_timeout=5
+                )
+            
             # 测试 Redis 连接
             self.redis_client.ping()
-            print(f"✅ Redis 连接成功: {settings.REDIS_HOST}:{settings.REDIS_PORT}")
+            print(f"✅ Redis 连接成功！")
+            
         except redis.ConnectionError as e:
             print(f"❌ Redis 连接失败: {e}")
-            print(f"   Host: {settings.REDIS_HOST}")
-            print(f"   Port: {settings.REDIS_PORT}")
-            print(f"   DB: {settings.REDIS_DB}")
+            print(f"📋 当前配置:")
+            if settings.REDIS_URL:
+                print(f"   REDIS_URL: {settings.REDIS_URL[:30]}...")
+            else:
+                print(f"   REDIS_HOST: {settings.REDIS_HOST}")
+                print(f"   REDIS_PORT: {settings.REDIS_PORT}")
+                print(f"   REDIS_DB: {settings.REDIS_DB}")
+                print(f"   REDIS_PASSWORD: {'已设置' if settings.REDIS_PASSWORD else '未设置'}")
+            print(f"")
+            print(f"🔧 解决方案:")
+            print(f"   1. 在 Render 创建 Redis 实例")
+            print(f"   2. 在环境变量中设置 REDIS_URL")
+            print(f"   3. 或分别设置 REDIS_HOST, REDIS_PORT, REDIS_PASSWORD")
             raise Exception(f"Redis 连接失败，请检查配置: {str(e)}")
         except Exception as e:
             print(f"❌ 初始化认证服务失败: {e}")

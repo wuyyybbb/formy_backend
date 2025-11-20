@@ -17,6 +17,9 @@ class Settings(BaseSettings):
     API_V1_PREFIX: str = "/api/v1"
     
     # Redis 配置
+    # 方式1: 使用完整的 Redis URL (优先，适合 Render 等云平台)
+    REDIS_URL: Optional[str] = None
+    # 方式2: 分别配置各项（备选）
     REDIS_HOST: str = "localhost"
     REDIS_PORT: int = 6379
     REDIS_DB: int = 0
@@ -38,7 +41,7 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24  # 24 小时
     
     # CORS 配置
-    CORS_ORIGINS: str = "http://localhost:3000,http://localhost:5173"
+    CORS_ORIGINS: str = "http://localhost:3000,http://localhost:5173,https://formy-frontend.vercel.app"
     
     @property
     def get_cors_origins(self) -> list:
