@@ -28,26 +28,40 @@ async def send_verification_code(request: SendCodeRequest):
     验证码有效期 10 分钟
     """
     try:
+        print(f"📧 收到发送验证码请求: {request.email}")
+        
         auth_service = get_auth_service()
         email_service = get_email_service()
         
         # 生成验证码
         code = auth_service.generate_code()
+        print(f"🔑 生成验证码: {code} (仅用于调试，生产环境应删除)")
         
         # 保存验证码到 Redis
-        if not auth_service.save_verification_code(request.email, code):
+        print(f"💾 正在保存验证码到 Redis...")
+        save_result = auth_service.save_verification_code(request.email, code)
+        print(f"💾 保存结果: {save_result}")
+        
+        if not save_result:
+            print(f"❌ Redis 保存失败")
             raise HTTPException(
                 status_code=500,
-                detail="保存验证码失败，请稍后重试"
+                detail="保存验证码失败，请检查 Redis 连接"
             )
         
         # 发送邮件
-        if not await email_service.send_verification_code(request.email, code):
+        print(f"📤 正在发送邮件到 {request.email}...")
+        send_result = await email_service.send_verification_code(request.email, code)
+        print(f"📤 发送结果: {send_result}")
+        
+        if not send_result:
+            print(f"❌ 邮件发送失败")
             raise HTTPException(
                 status_code=500,
-                detail="发送邮件失败，请检查邮箱地址或稍后重试"
+                detail="发送邮件失败，请检查 RESEND_API_KEY 配置"
             )
         
+        print(f"✅ 验证码发送成功: {request.email}")
         return SendCodeResponse(
             success=True,
             message=f"验证码已发送到 {request.email}",
@@ -57,7 +71,9 @@ async def send_verification_code(request: SendCodeRequest):
     except HTTPException:
         raise
     except Exception as e:
-        print(f"发送验证码失败: {e}")
+        print(f"❌ 发送验证码异常: {type(e).__name__}: {str(e)}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(
             status_code=500,
             detail=f"发送验证码失败: {str(e)}"

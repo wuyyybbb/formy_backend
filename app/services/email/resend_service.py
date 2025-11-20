@@ -12,11 +12,16 @@ class ResendEmailService:
     
     def __init__(self):
         self.api_key = os.getenv("RESEND_API_KEY", "")
-        self.from_email = os.getenv("FROM_EMAIL", "support@formy.it.com")
+        self.from_email = os.getenv("FROM_EMAIL", "onboarding@resend.dev")
         self.api_url = "https://api.resend.com/emails"
         
+        print(f"🔧 邮件服务初始化:")
+        print(f"   - API Key: {'已配置' if self.api_key else '❌ 未配置'}")
+        print(f"   - From Email: {self.from_email}")
+        
         if not self.api_key:
-            print("⚠️  警告: RESEND_API_KEY 未设置")
+            print("⚠️  警告: RESEND_API_KEY 未设置，邮件功能将无法使用")
+            print("⚠️  请在环境变量中设置 RESEND_API_KEY")
     
     async def send_verification_code(self, to_email: str, code: str) -> bool:
         """

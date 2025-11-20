@@ -22,13 +22,29 @@ class AuthService:
     
     def __init__(self):
         """初始化认证服务"""
-        self.redis_client = redis.Redis(
-            host=settings.REDIS_HOST,
-            port=settings.REDIS_PORT,
-            db=settings.REDIS_DB,
-            password=settings.REDIS_PASSWORD,
-            decode_responses=True
-        )
+        try:
+            self.redis_client = redis.Redis(
+                host=settings.REDIS_HOST,
+                port=settings.REDIS_PORT,
+                db=settings.REDIS_DB,
+                password=settings.REDIS_PASSWORD,
+                decode_responses=True,
+                socket_connect_timeout=5,
+                socket_timeout=5
+            )
+            # 测试 Redis 连接
+            self.redis_client.ping()
+            print(f"✅ Redis 连接成功: {settings.REDIS_HOST}:{settings.REDIS_PORT}")
+        except redis.ConnectionError as e:
+            print(f"❌ Redis 连接失败: {e}")
+            print(f"   Host: {settings.REDIS_HOST}")
+            print(f"   Port: {settings.REDIS_PORT}")
+            print(f"   DB: {settings.REDIS_DB}")
+            raise Exception(f"Redis 连接失败，请检查配置: {str(e)}")
+        except Exception as e:
+            print(f"❌ 初始化认证服务失败: {e}")
+            raise
+            
         self.code_expiry = 600  # 10 分钟
         self.jwt_secret = settings.SECRET_KEY
         self.jwt_algorithm = settings.ALGORITHM
