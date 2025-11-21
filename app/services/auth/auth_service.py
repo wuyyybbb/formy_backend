@@ -37,16 +37,16 @@ class AuthService:
             if settings.REDIS_URL:
                 print(f"   REDIS_URL: {settings.REDIS_URL[:30]}...")
             else:
-                print(f"   REDIS_HOST: {settings.REDIS_HOST}")
-                print(f"   REDIS_PORT: {settings.REDIS_PORT}")
-                print(f"   REDIS_DB: {settings.REDIS_DB}")
-                print(f"   REDIS_PASSWORD: {'已设置' if settings.REDIS_PASSWORD else '未设置'}")
+                print(f"   REDIS_URL: 未设置")
             print(f"")
             print(f"🔧 解决方案:")
             print(f"   1. 在 Render 创建 Redis 实例")
             print(f"   2. 在环境变量中设置 REDIS_URL")
-            print(f"   3. 或分别设置 REDIS_HOST, REDIS_PORT, REDIS_PASSWORD")
+            print(f"   3. REDIS_URL 格式: redis://[:password@]host[:port][/db]")
             raise Exception(f"Redis 连接失败，请检查配置: {str(e)}")
+        except ValueError as e:
+            print(f"❌ Redis 配置错误: {e}")
+            raise Exception(f"Redis 配置错误: {str(e)}")
         except Exception as e:
             print(f"❌ 初始化认证服务失败: {e}")
             raise
