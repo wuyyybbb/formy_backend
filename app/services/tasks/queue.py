@@ -8,6 +8,7 @@ from typing import Optional, Dict, Any
 from datetime import datetime
 
 from app.core.config import settings
+from app.utils.redis_client import get_redis_client
 
 
 class TaskQueue:
@@ -20,13 +21,8 @@ class TaskQueue:
     
     def __init__(self):
         """初始化 Redis 连接"""
-        self.redis_client = redis.Redis(
-            host=settings.REDIS_HOST,
-            port=settings.REDIS_PORT,
-            db=settings.REDIS_DB,
-            decode_responses=True,
-            password=settings.REDIS_PASSWORD if hasattr(settings, 'REDIS_PASSWORD') else None
-        )
+        # 使用统一的 Redis 客户端（基于 REDIS_URL）
+        self.redis_client = get_redis_client()
     
     def push_task(self, task_id: str, task_data: Dict[str, Any]) -> bool:
         """

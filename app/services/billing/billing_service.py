@@ -12,18 +12,15 @@ from app.core.config import settings
 from app.models.user import User
 from app.schemas.billing import UserBillingInfo, ChangePlanResponse
 from app.config.plans import get_plan_by_id
+from app.utils.redis_client import get_redis_client
 
 
 class BillingService:
     """计费服务"""
     
     def __init__(self):
-        self.redis_client = redis.Redis(
-            host=settings.REDIS_HOST,
-            port=settings.REDIS_PORT,
-            db=settings.REDIS_DB,
-            decode_responses=True
-        )
+        # 使用统一的 Redis 客户端（基于 REDIS_URL）
+        self.redis_client = get_redis_client()
     
     def _get_user_key(self, user_id: str) -> str:
         """获取用户在 Redis 中的键"""

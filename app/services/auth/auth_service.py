@@ -15,6 +15,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from app.core.config import settings
 from app.models.user import User, VerificationCode
 from app.utils.id_generator import generate_user_id
+from app.utils.redis_client import get_redis_client
 
 
 class AuthService:
@@ -23,27 +24,8 @@ class AuthService:
     def __init__(self):
         """初始化认证服务"""
         try:
-            # 优先使用 REDIS_URL（云平台推荐）
-            if settings.REDIS_URL:
-                print(f"🔧 使用 REDIS_URL 连接: {settings.REDIS_URL[:20]}...")
-                self.redis_client = redis.from_url(
-                    settings.REDIS_URL,
-                    decode_responses=True,
-                    socket_connect_timeout=5,
-                    socket_timeout=5
-                )
-            else:
-                # 使用分散配置
-                print(f"🔧 使用分散配置连接 Redis: {settings.REDIS_HOST}:{settings.REDIS_PORT}")
-                self.redis_client = redis.Redis(
-                    host=settings.REDIS_HOST,
-                    port=settings.REDIS_PORT,
-                    db=settings.REDIS_DB,
-                    password=settings.REDIS_PASSWORD,
-                    decode_responses=True,
-                    socket_connect_timeout=5,
-                    socket_timeout=5
-                )
+            # 使用统一的 Redis 客户端（基于 REDIS_URL）
+            self.redis_client = get_redis_client()
             
             # 测试 Redis 连接
             self.redis_client.ping()
