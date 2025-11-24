@@ -142,6 +142,10 @@ class AuthService:
             User: 用户对象
         """
         try:
+            # 特殊账号：管理员账号固定 5000 算力
+            ADMIN_EMAIL = "wuyebei3206@gmail.com"
+            ADMIN_CREDITS = 5000
+            
             # 尝试从 Redis 获取用户
             user_key = f"user:email:{email}"
             user_data_str = self.redis_client.get(user_key)
@@ -151,17 +155,24 @@ class AuthService:
                 user = User(**user_data)
                 # 更新最后登录时间
                 user.last_login = datetime.now()
+                
+                # 如果是管理员账号，始终保持 5000 算力
+                if email == ADMIN_EMAIL:
+                    user.current_credits = ADMIN_CREDITS
             else:
-                # 创建新用户，分配免费算力
+                # 创建新用户
+                # 管理员账号：5000 算力
+                # 普通用户：100 算力
+                initial_credits = ADMIN_CREDITS if email == ADMIN_EMAIL else 100
+                
                 user = User(
                     user_id=generate_user_id(),
                     email=email,
                     username=email.split('@')[0],
                     created_at=datetime.now(),
                     last_login=datetime.now(),
-                    # 新用户默认赠送 100 免费算力（约 2-3 次换姿势）
                     current_plan_id=None,  # 免费用户没有套餐
-                    current_credits=100,  # 赠送 100 算力
+                    current_credits=initial_credits,  # 管理员 5000，普通用户 100
                     plan_renew_at=None
                 )
             
