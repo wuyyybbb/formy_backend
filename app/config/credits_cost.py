@@ -8,9 +8,9 @@ from typing import Dict
 
 # 基础算力消耗（按编辑模式）
 BASE_CREDITS_COST: Dict[str, int] = {
-    "HEAD_SWAP": 50,           # AI 换头：50 算力
-    "BACKGROUND_CHANGE": 50,   # AI 换背景：50 算力
-    "POSE_CHANGE": 50,         # AI 换姿势：50 算力
+    "HEAD_SWAP": 40,           # AI 换头：40 算力
+    "BACKGROUND_CHANGE": 30,   # AI 换背景：30 算力
+    "POSE_CHANGE": 50,         # AI 换姿势：50 算力（最复杂）
 }
 
 
