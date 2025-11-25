@@ -55,8 +55,22 @@ class PipelineWorker:
                 
                 if task_id:
                     print(f"\n{'='*60}")
-                    print(f"[Worker] 获取到任务: {task_id}")
+                    print(f"[Worker] 📥 获取到任务: {task_id}")
                     print(f"{'='*60}")
+                    
+                    # 立即标记任务为处理中
+                    try:
+                        self.queue.update_task_status(
+                            task_id=task_id,
+                            status="processing",
+                            progress=0,
+                            current_step="Worker 已接收任务，正在初始化..."
+                        )
+                        print(f"[Worker] ✅ 任务状态已更新为 processing")
+                    except Exception as e:
+                        print(f"[Worker] ⚠️  更新任务状态失败: {e}")
+                    
+                    # 处理任务
                     self._process_task(task_id)
                 else:
                     # 超时未获取到任务，继续循环
@@ -88,10 +102,18 @@ class PipelineWorker:
         """
         try:
             # 1. 获取任务数据
+            print(f"[Worker] 📋 正在获取任务数据...")
             task_data = self.queue.get_task_data(task_id)
             
             if not task_data:
-                print(f"[Worker] 任务数据不存在: {task_id}")
+                error_msg = f"任务数据不存在: {task_id}"
+                print(f"[Worker] ❌ {error_msg}")
+                self.task_service.fail_task(
+                    task_id=task_id,
+                    error_code="TASK_DATA_NOT_FOUND",
+                    error_message="无法获取任务数据",
+                    error_details=f"任务 {task_id} 在 Redis 中不存在"
+                )
                 return
             
             # 2. 解析任务信息
@@ -100,18 +122,40 @@ class PipelineWorker:
             source_image = input_data.get("source_image")
             config = input_data.get("config", {})
             
-            print(f"[Worker] 任务模式: {mode}")
-            print(f"[Worker] 原始图片: {source_image}")
-            print(f"[Worker] 配置: {config}")
+            print(f"[Worker] 📌 任务模式: {mode}")
+            print(f"[Worker] 🖼️  原始图片: {source_image}")
+            print(f"[Worker] ⚙️  配置: {config}")
             
-            # 3. 更新状态为处理中
+            # 3. 验证必要参数
+            if not mode:
+                self.task_service.fail_task(
+                    task_id=task_id,
+                    error_code="INVALID_MODE",
+                    error_message="任务模式 (mode) 缺失",
+                    error_details="请求中未指定编辑模式"
+                )
+                print(f"[Worker] ❌ 任务模式缺失")
+                return
+            
+            if not source_image:
+                self.task_service.fail_task(
+                    task_id=task_id,
+                    error_code="INVALID_SOURCE_IMAGE",
+                    error_message="原始图片 (source_image) 缺失",
+                    error_details="请求中未指定原始图片路径"
+                )
+                print(f"[Worker] ❌ 原始图片缺失")
+                return
+            
+            # 4. 更新状态为处理中（第二次更新，带更详细的信息）
             self.task_service.update_task_progress(
                 task_id=task_id,
-                progress=0,
-                current_step="任务已开始处理"
+                progress=5,
+                current_step=f"正在准备 {mode} 处理..."
             )
             
-            # 4. 根据模式分发到对应的 Pipeline
+            # 5. 根据模式分发到对应的 Pipeline
+            print(f"[Worker] 🚀 开始处理任务...")
             result = self._dispatch_to_pipeline(
                 task_id=task_id,
                 mode=mode,
@@ -119,32 +163,40 @@ class PipelineWorker:
                 config=config
             )
             
-            # 5. 标记任务完成
+            # 6. 标记任务完成或失败
             if result:
                 self.task_service.complete_task(task_id, result)
                 print(f"[Worker] ✅ 任务完成: {task_id}")
-                print(f"[Worker] 结果: {result.get('output_image')}")
+                print(f"[Worker] 📸 输出图片: {result.get('output_image')}")
+                if result.get('comparison_image'):
+                    print(f"[Worker] 🔀 对比图片: {result.get('comparison_image')}")
             else:
                 self.task_service.fail_task(
                     task_id=task_id,
                     error_code="PROCESSING_FAILED",
-                    error_message="任务处理失败"
+                    error_message="Pipeline 处理失败",
+                    error_details=f"模式 {mode} 的处理流程返回了空结果"
                 )
-                print(f"[Worker] ❌ 任务失败: {task_id}")
+                print(f"[Worker] ❌ 任务失败: {task_id} - Pipeline 返回空结果")
                 
         except Exception as e:
             print(f"[Worker] ❌ 处理任务异常: {task_id}")
-            print(f"[Worker] 错误: {e}")
+            print(f"[Worker] 💥 错误类型: {type(e).__name__}")
+            print(f"[Worker] 📝 错误信息: {e}")
             import traceback
-            traceback.print_exc()
+            error_traceback = traceback.format_exc()
+            print(error_traceback)
             
-            # 标记任务失败
-            self.task_service.fail_task(
-                task_id=task_id,
-                error_code="INTERNAL_ERROR",
-                error_message="任务处理过程中发生异常",
-                error_details=str(e)
-            )
+            # 标记任务失败，包含详细的错误信息
+            try:
+                self.task_service.fail_task(
+                    task_id=task_id,
+                    error_code="INTERNAL_ERROR",
+                    error_message=f"任务处理异常: {type(e).__name__}",
+                    error_details=f"{str(e)}\n\n堆栈跟踪:\n{error_traceback}"
+                )
+            except Exception as fail_error:
+                print(f"[Worker] ⚠️  无法标记任务失败: {fail_error}")
     
     def _dispatch_to_pipeline(
         self,
@@ -204,7 +256,7 @@ class PipelineWorker:
         Returns:
             Optional[dict]: 处理结果
         """
-        print(f"[Worker] 🚀 开始执行换姿势 Pipeline...")
+        print(f"[Worker] 🎨 开始执行换姿势 Pipeline...")
         
         try:
             # 构建 Pipeline 输入
@@ -212,8 +264,14 @@ class PipelineWorker:
             
             # 进度回调函数
             def progress_callback(progress: int, message: str):
-                self.task_service.update_task_progress(task_id, progress, message)
-                print(f"[Worker] 进度: {progress}% - {message}")
+                try:
+                    self.task_service.update_task_progress(task_id, progress, message)
+                    print(f"[Worker] 📊 进度: {progress}% - {message}")
+                except Exception as e:
+                    print(f"[Worker] ⚠️  更新进度失败: {e}")
+            
+            # 更新进度
+            progress_callback(10, "正在准备 Pipeline 输入...")
             
             # 构建输入对象
             task_input = EditTaskInput(
@@ -224,12 +282,20 @@ class PipelineWorker:
                 progress_callback=progress_callback
             )
             
+            print(f"[Worker] 📦 Pipeline 输入已准备完成")
+            progress_callback(15, "正在调用 ComfyUI Pipeline...")
+            
             # 执行 Pipeline
             result = self.pose_pipeline.execute(task_input)
             
             # 检查结果
             if result.success:
                 print(f"[Worker] ✅ Pipeline 执行成功")
+                print(f"[Worker] 📸 输出图片: {result.output_image}")
+                print(f"[Worker] 🖼️  缩略图: {result.thumbnail}")
+                if result.comparison_image:
+                    print(f"[Worker] 🔀 对比图: {result.comparison_image}")
+                
                 return {
                     "output_image": result.output_image,
                     "thumbnail": result.thumbnail,
@@ -237,13 +303,37 @@ class PipelineWorker:
                     "metadata": result.metadata
                 }
             else:
-                print(f"[Worker] ❌ Pipeline 执行失败: {result.error_message}")
+                print(f"[Worker] ❌ Pipeline 执行失败")
+                print(f"[Worker] 🔴 错误码: {result.error_code}")
+                print(f"[Worker] 📝 错误信息: {result.error_message}")
+                
+                # 将 Pipeline 错误传递到任务状态
+                self.task_service.fail_task(
+                    task_id=task_id,
+                    error_code=result.error_code or "PIPELINE_ERROR",
+                    error_message=result.error_message or "Pipeline 执行失败",
+                    error_details=f"Pipeline 返回失败结果。可能的原因：\n"
+                                 f"- ComfyUI 服务不可用\n"
+                                 f"- 图片格式不正确\n"
+                                 f"- 配置参数错误"
+                )
                 return None
                 
         except Exception as e:
-            print(f"[Worker] ❌ Pipeline 执行异常: {e}")
+            print(f"[Worker] ❌ Pipeline 执行异常")
+            print(f"[Worker] 💥 异常类型: {type(e).__name__}")
+            print(f"[Worker] 📝 异常信息: {e}")
             import traceback
-            traceback.print_exc()
+            error_trace = traceback.format_exc()
+            print(error_trace)
+            
+            # 记录详细错误
+            self.task_service.fail_task(
+                task_id=task_id,
+                error_code="PIPELINE_EXCEPTION",
+                error_message=f"Pipeline 执行异常: {type(e).__name__}",
+                error_details=f"{str(e)}\n\n堆栈:\n{error_trace}"
+            )
             return None
     
     def _process_mock(
