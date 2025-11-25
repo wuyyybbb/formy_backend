@@ -1,0 +1,156 @@
+==================================================
+  快速测试算力扣减功能
+==================================================
+
+📋 前提条件
+-----------
+1. 后端正在运行：
+   cd backend
+   python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+
+2. Redis 正在运行
+
+
+🧪 方法 1: 自动测试脚本（推荐）✨
+-----------
+cd backend
+python test_credits_integration.py
+
+测试场景：
+✓ 场景 1: 算力充足 → 任务创建成功
+✓ 场景 2: 算力不足 → 返回 402 错误
+✓ 场景 3: 不同模式消耗不同算力
+
+预期结果：
+- 创建任务时会扣除算力
+- 算力不足时返回 402 错误
+- 不同任务类型消耗不同算力
+
+
+💻 方法 2: 手动测试（PowerShell）
+-----------
+# Step 1: 登录获取 token
+$email = "test@example.com"
+
+Invoke-RestMethod -Uri "http://localhost:8000/api/v1/auth/send-code" -Method Post -Body (@{email=$email} | ConvertTo-Json) -ContentType "application/json"
+
+$loginResponse = Invoke-RestMethod -Uri "http://localhost:8000/api/v1/auth/login" -Method Post -Body (@{email=$email;code="YOUR_CODE"} | ConvertTo-Json) -ContentType "application/json"
+$token = $loginResponse.access_token
+$headers = @{Authorization="Bearer $token"}
+
+# Step 2: 切换到 PRO 套餐（12000 算力）
+Invoke-RestMethod -Uri "http://localhost:8000/api/v1/billing/change_plan" -Method Post -Headers $headers -Body (@{plan_id="pro"} | ConvertTo-Json) -ContentType "application/json" | ConvertTo-Json
+
+# Step 3: 查看当前算力
+Invoke-RestMethod -Uri "http://localhost:8000/api/v1/billing/me" -Method Get -Headers $headers | ConvertTo-Json
+
+# Step 4: 创建任务（会扣除算力）
+$taskData = @{
+    mode = "HEAD_SWAP"
+    source_image = "test_image_123"
+    config = @{
+        quality = "standard"
+        size = "medium"
+    }
+} | ConvertTo-Json
+
+$task = Invoke-RestMethod -Uri "http://localhost:8000/api/v1/tasks" -Method Post -Headers $headers -Body $taskData -ContentType "application/json"
+Write-Host "任务创建成功！消耗算力: $($task.credits_consumed)"
+
+# Step 5: 再次查看算力（应该减少了）
+Invoke-RestMethod -Uri "http://localhost:8000/api/v1/billing/me" -Method Get -Headers $headers | ConvertTo-Json
+
+# Step 6: 测试算力不足（消耗到只剩 30 算力）
+Invoke-RestMethod -Uri "http://localhost:8000/api/v1/billing/consume_credits?amount=11970" -Method Post -Headers $headers
+
+# Step 7: 尝试创建任务（需要 48，但只剩 30）
+try {
+    Invoke-RestMethod -Uri "http://localhost:8000/api/v1/tasks" -Method Post -Headers $headers -Body $taskData -ContentType "application/json"
+} catch {
+    Write-Host "✓ 正确返回算力不足错误（402）"
+    $_.ErrorDetails.Message | ConvertFrom-Json | ConvertTo-Json -Depth 10
+}
+
+
+📊 算力消耗参考
+-----------
+标准配置（quality=standard, size=medium）：
+
+AI 换头（HEAD_SWAP）:          48 算力
+AI 换背景（BACKGROUND_CHANGE）: 36 算力
+AI 换姿势（POSE_CHANGE）:       60 算力
+
+不同套餐可用次数：
+- STARTER（2000）:   约 41 次换头
+- BASIC（5000）:     约 104 次换头
+- PRO（12000）:      约 250 次换头
+- ULTIMATE（30000）: 约 625 次换头
+
+
+🎯 测试要点
+-----------
+1. 创建任务需要登录（需要 token）
+2. 创建任务前会检查算力是否足够
+3. 算力足够 → 任务创建成功，扣除算力
+4. 算力不足 → 返回 402 错误，不创建任务
+5. 不同模式和配置消耗不同算力
+6. TaskInfo 响应中包含 credits_consumed 字段
+
+
+❌ 常见错误
+-----------
+错误码 401: token 无效或过期，需要重新登录
+错误码 402: 算力不足，需要充值或升级套餐
+错误码 404: 用户不存在，需要先登录
+错误码 500: 服务器错误
+
+
+✅ 预期响应示例
+-----------
+创建任务成功（200）：
+{
+  "task_id": "task_abc123",
+  "status": "pending",
+  "mode": "HEAD_SWAP",
+  "credits_consumed": 48,
+  ...
+}
+
+算力不足（402）：
+{
+  "detail": {
+    "error": "CREDIT_NOT_ENOUGH",
+    "message": "算力不足。需要 48 算力，当前剩余 30 算力",
+    "required": 48,
+    "current": 30,
+    "deficit": 18
+  }
+}
+
+
+🔍 Swagger UI 测试
+-----------
+1. 打开 http://localhost:8000/docs
+2. 先登录获取 token（auth 标签）
+3. 点击 🔓 Authorize，输入 Bearer YOUR_TOKEN
+4. 找到 billing 标签：
+   - GET /billing/me - 查看算力
+   - POST /billing/change_plan - 切换套餐
+5. 找到 tasks 标签：
+   - POST /tasks - 创建任务（会扣除算力）
+
+
+📚 相关文档
+-----------
+- 详细实现说明：算力扣减与AI任务集成说明.md
+- 算力消耗配置：backend/app/config/credits_cost.py
+- API 文档：http://localhost:8000/docs
+
+
+💡 提示
+-----------
+- MVP 阶段不接入真实支付，可以直接切换套餐
+- 算力扣减是"预扣除"机制，任务创建失败会自动返还
+- 前端应该在用户点击"生成"前显示预估算力消耗
+- 建议在前端显示实时剩余算力
+

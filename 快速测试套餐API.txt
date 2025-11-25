@@ -1,0 +1,88 @@
+==================================================
+  快速测试套餐配置 API
+==================================================
+
+📋 前提条件
+-----------
+后端正在运行：
+cd backend
+python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+
+
+🧪 方法 1: 运行测试脚本（推荐）
+-----------
+cd backend
+python test_plans_api.py
+
+✅ 自动测试所有接口
+✅ 输出格式化的结果
+✅ 包含错误情况测试
+
+
+🌐 方法 2: 浏览器查看 API 文档
+-----------
+打开：http://localhost:8000/docs
+
+找到 "plans" 标签，点击展开
+
+测试接口：
+1. GET /api/v1/plans - 获取所有套餐
+2. GET /api/v1/plans/{plan_id} - 获取单个套餐
+3. GET /api/v1/plans/featured/current - 获取推荐套餐
+
+
+💻 方法 3: 使用 PowerShell 测试
+-----------
+# 获取所有套餐
+Invoke-RestMethod -Uri "http://localhost:8000/api/v1/plans" -Method Get | ConvertTo-Json -Depth 10
+
+# 获取 PRO 套餐
+Invoke-RestMethod -Uri "http://localhost:8000/api/v1/plans/pro" -Method Get | ConvertTo-Json -Depth 10
+
+# 获取推荐套餐
+Invoke-RestMethod -Uri "http://localhost:8000/api/v1/plans/featured/current" -Method Get | ConvertTo-Json -Depth 10
+
+
+🔍 方法 4: 使用浏览器直接访问
+-----------
+打开浏览器访问以下 URL：
+
+所有套餐：
+http://localhost:8000/api/v1/plans
+
+PRO 套餐：
+http://localhost:8000/api/v1/plans/pro
+
+推荐套餐：
+http://localhost:8000/api/v1/plans/featured/current
+
+
+📊 预期响应
+-----------
+所有套餐列表应该包含 4 个套餐：
+1. STARTER - ¥49/月
+2. BASIC - ¥99/月
+3. PRO - ¥199/月（推荐⭐）
+4. ULTIMATE - ¥399/月
+
+每个套餐包含：
+- plan_id: 套餐ID
+- name: 套餐名称
+- price_month: 月付价格
+- price_original: 原价
+- monthly_credits: 算力额度
+- image_count: 图片数量
+- is_featured: 是否推荐
+- features: 功能列表
+- sort_order: 排序
+
+
+✅ 验证成功
+-----------
+如果看到以上信息，说明套餐配置 API 运行正常！
+
+下一步可以考虑：
+1. 前端从后端获取套餐数据（可选）
+2. 集成支付系统
+3. 添加用户订阅管理
+

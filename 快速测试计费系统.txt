@@ -1,0 +1,189 @@
+==================================================
+  快速测试计费系统（用户套餐体系）
+==================================================
+
+📋 前提条件
+-----------
+1. 后端正在运行：
+   cd backend
+   python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+
+2. Redis 正在运行
+
+
+🧪 测试方法 1: 自动测试脚本（推荐）
+-----------
+cd backend
+python test_billing_api.py
+
+步骤：
+1. 脚本会提示你输入测试邮箱（默认：test_billing@example.com）
+2. 脚本会发送验证码到邮箱
+3. 输入收到的验证码
+4. 自动运行所有测试：
+   ✓ 查看初始计费信息
+   ✓ 切换到 STARTER 套餐
+   ✓ 切换到 PRO 套餐
+   ✓ 消耗算力
+   ✓ 增加算力
+   ✓ 切换到 ULTIMATE 套餐
+
+预期结果：
+- 每次切换套餐后，算力会重置为新套餐的额度
+- 消耗算力后，剩余算力减少
+- 增加算力后，剩余算力增加
+
+
+🌐 测试方法 2: 使用 Swagger UI
+-----------
+1. 打开浏览器：http://localhost:8000/docs
+
+2. 找到 "auth" 标签，先登录获取 token：
+   - POST /auth/send-code - 发送验证码
+   - POST /auth/login - 登录获取 token
+
+3. 点击页面右上角 🔓 Authorize 按钮
+   - 输入: Bearer YOUR_TOKEN_HERE
+   - 点击 Authorize
+
+4. 找到 "billing" 标签，测试接口：
+   - GET /api/v1/billing/me - 查看计费信息
+   - POST /api/v1/billing/change_plan - 切换套餐
+
+
+💻 测试方法 3: 使用 PowerShell
+-----------
+# Step 1: 登录获取 token
+$email = "test@example.com"
+
+# 发送验证码
+Invoke-RestMethod -Uri "http://localhost:8000/api/v1/auth/send-code" -Method Post -Body (@{email=$email} | ConvertTo-Json) -ContentType "application/json"
+
+# 使用验证码登录（替换 123456 为实际验证码）
+$loginResponse = Invoke-RestMethod -Uri "http://localhost:8000/api/v1/auth/login" -Method Post -Body (@{email=$email;code="123456"} | ConvertTo-Json) -ContentType "application/json"
+$token = $loginResponse.access_token
+Write-Host "Token: $token"
+
+# Step 2: 查看计费信息
+$headers = @{Authorization="Bearer $token"}
+Invoke-RestMethod -Uri "http://localhost:8000/api/v1/billing/me" -Method Get -Headers $headers | ConvertTo-Json -Depth 10
+
+# Step 3: 切换到 PRO 套餐
+$body = @{plan_id="pro"} | ConvertTo-Json
+Invoke-RestMethod -Uri "http://localhost:8000/api/v1/billing/change_plan" -Method Post -Headers $headers -Body $body -ContentType "application/json" | ConvertTo-Json -Depth 10
+
+# Step 4: 再次查看计费信息
+Invoke-RestMethod -Uri "http://localhost:8000/api/v1/billing/me" -Method Get -Headers $headers | ConvertTo-Json -Depth 10
+
+
+🔍 测试方法 4: 使用 curl
+-----------
+# Step 1: 登录获取 token
+curl -X POST http://localhost:8000/api/v1/auth/send-code \
+  -H "Content-Type: application/json" \
+  -d '{"email":"test@example.com"}'
+
+curl -X POST http://localhost:8000/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"test@example.com","code":"123456"}'
+
+# 复制 access_token，替换下面的 YOUR_TOKEN
+
+# Step 2: 查看计费信息
+curl -X GET http://localhost:8000/api/v1/billing/me \
+  -H "Authorization: Bearer YOUR_TOKEN"
+
+# Step 3: 切换到 PRO 套餐
+curl -X POST http://localhost:8000/api/v1/billing/change_plan \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"plan_id":"pro"}'
+
+# Step 4: 再次查看计费信息
+curl -X GET http://localhost:8000/api/v1/billing/me \
+  -H "Authorization: Bearer YOUR_TOKEN"
+
+
+📊 预期响应示例
+-----------
+GET /billing/me 响应：
+{
+  "user_id": "user_abc123",
+  "email": "test@example.com",
+  "current_plan_id": "pro",
+  "current_plan_name": "PRO",
+  "current_credits": 12000,
+  "monthly_credits": 12000,
+  "total_credits_used": 0,
+  "plan_renew_at": "2025-12-01T00:00:00",
+  "credits_usage_percentage": 0.0
+}
+
+POST /billing/change_plan 响应：
+{
+  "success": true,
+  "message": "成功切换到 PRO 套餐",
+  "new_plan_id": "pro",
+  "new_plan_name": "PRO",
+  "new_credits": 12000,
+  "plan_renew_at": "2025-12-01T00:00:00"
+}
+
+
+✅ 验证要点
+-----------
+1. 切换套餐后：
+   - current_plan_id 应该更新
+   - current_credits 应该重置为新套餐的额度
+   - plan_renew_at 应该设置为下个月 1 号
+
+2. 消耗算力后：
+   - current_credits 减少
+   - total_credits_used 增加
+
+3. 增加算力后：
+   - current_credits 增加
+
+4. 使用百分比：
+   - credits_usage_percentage = (used / monthly) * 100
+
+
+🎯 测试套餐切换序列
+-----------
+建议测试顺序：
+1. 无套餐 → STARTER（¥49，2000 算力）
+2. STARTER → BASIC（¥99，5000 算力）
+3. BASIC → PRO（¥199，12000 算力）
+4. PRO → ULTIMATE（¥399，30000 算力）
+5. ULTIMATE → STARTER（降级测试）
+
+
+⚠️ 注意事项
+-----------
+1. MVP 阶段不接入真实支付，切换套餐立即生效
+2. 切换套餐会重置算力为新套餐的月度额度
+3. 用户数据存储在 Redis 中
+4. 需要先登录获取 token 才能访问计费接口
+
+
+❓ 常见问题
+-----------
+Q: 返回 401 Unauthorized？
+A: token 无效或过期，需要重新登录
+
+Q: 返回 404 用户不存在？
+A: 用户数据在 Redis 中不存在，需要先登录创建用户
+
+Q: 切换套餐后算力没变？
+A: 检查是否调用了正确的接口，查看响应中的 new_credits
+
+Q: 如何重置测试数据？
+A: 重启 Redis 或删除对应的用户 key
+
+
+📚 相关文档
+-----------
+- 详细实现说明：用户套餐体系实现说明.md
+- API 文档：http://localhost:8000/docs
+- 套餐配置：backend/app/config/plans.py
+
