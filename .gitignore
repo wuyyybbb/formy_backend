@@ -57,6 +57,9 @@ htmlcov/
 storage/uploads/
 storage/results/
 
+# Test images (本地测试用图片，不提交)
+test_image/
+
 # Temporary files
 *.tmp
 temp/

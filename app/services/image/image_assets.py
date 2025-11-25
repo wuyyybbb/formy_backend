@@ -19,15 +19,28 @@ UPLOAD_SUBDIRS = ("source", "reference", "other")
 def resolve_uploaded_file(file_id: str) -> Path:
     """
     根据 file_id 定位上传图片
+    
+    支持两种方式：
+    1. 标准方式：file_id (如 "img_abc123")，会在 uploads 目录搜索
+    2. 测试方式：完整路径或文件名，可以直接使用本地文件
+    
     Args:
-        file_id: 上传接口返回的 file_id
+        file_id: 上传接口返回的 file_id 或本地文件路径
     Returns:
         Path: 真实文件路径
     """
     if not file_id:
         raise ValueError("file_id 不能为空")
+    
+    # Check if file_id is actually a path (for testing purposes)
+    file_path = Path(file_id)
+    if file_path.exists() and file_path.is_file():
+        print(f"[resolve_uploaded_file] Using direct path: {file_path}")
+        return file_path
+    
+    # Standard flow: search in UPLOAD_DIR
     if not UPLOAD_DIR.exists():
-        raise FileNotFoundError("上传目录不存在")
+        raise FileNotFoundError(f"上传目录不存在: {UPLOAD_DIR}")
 
     search_patterns = [UPLOAD_DIR / sub for sub in UPLOAD_SUBDIRS if (UPLOAD_DIR / sub).exists()]
     candidates: list[Path] = []
@@ -36,6 +49,21 @@ def resolve_uploaded_file(file_id: str) -> Path:
 
     if not candidates:
         candidates = list(UPLOAD_DIR.glob(f"**/{file_id}.*"))
+
+    # If still not found, try test_image directory (for local testing)
+    if not candidates:
+        test_image_dir = Path("test_image")
+        if test_image_dir.exists():
+            # Try exact filename match
+            test_file = test_image_dir / file_id
+            if test_file.exists():
+                print(f"[resolve_uploaded_file] Using test image: {test_file}")
+                return test_file
+            # Try with wildcard (e.g., "test_001" → "test_001.jpg")
+            test_candidates = list(test_image_dir.glob(f"{file_id}.*"))
+            if test_candidates:
+                print(f"[resolve_uploaded_file] Using test image: {test_candidates[0]}")
+                return test_candidates[0]
 
     if not candidates:
         raise FileNotFoundError(f"未找到对应文件: {file_id}")
