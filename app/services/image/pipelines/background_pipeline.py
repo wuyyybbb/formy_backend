@@ -7,6 +7,7 @@ from typing import Optional
 from app.services.image.pipelines.base import PipelineBase
 from app.services.image.dto import EditTaskInput, EditTaskResult, BackgroundChangeConfig
 from app.services.image.enums import ProcessingStep
+from app.core.error_codes import TaskErrorCode
 
 
 class BackgroundPipeline(PipelineBase):
@@ -35,7 +36,10 @@ class BackgroundPipeline(PipelineBase):
         try:
             # 1. 验证输入
             if not self.validate_input(task_input):
-                return self._create_error_result("输入参数验证失败")
+                return self._create_error_result(
+                    "输入参数验证失败",
+                    error_code=TaskErrorCode.INVALID_REQUEST.value
+                )
             
             # 2. 解析配置
             config = self._parse_config(task_input.config)
@@ -51,7 +55,10 @@ class BackgroundPipeline(PipelineBase):
             
         except Exception as e:
             self._log_step(ProcessingStep.COMPLETE, f"执行失败: {e}")
-            return self._create_error_result(str(e))
+            return self._create_error_result(
+                str(e),
+                error_code=TaskErrorCode.PIPELINE_ERROR.value
+            )
     
     def validate_input(self, task_input: EditTaskInput) -> bool:
         """
