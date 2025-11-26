@@ -49,7 +49,7 @@ engines:
   comfyui_pose_transfer:
     type: comfyui
     config:
-      comfyui_url: "https://d5m-dbdcym9t4h0p6ianf-qdkzkd4d-custom.service.onethingrobot.com"  # ComfyUI 服务地址
+      comfyui_url: "http://d5m-dbdcym9t4h0p6ianf-qdkzkd4d-custom.service.onethingrobot.com:7860"  # ComfyUI 服务地址
       workflow_path: "./workflows/pose_swap_workflow.json"
       timeout: 300
       poll_interval: 2
