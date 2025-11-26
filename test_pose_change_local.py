@@ -2,12 +2,22 @@
 Local test script for POSE_CHANGE pipeline using test_image directory
 Run this script to test pose transfer without frontend upload
 """
+import sys
+import os
+
+# Fix Windows console encoding for emoji support
+if sys.platform == "win32":
+    # Try to set UTF-8 encoding for Windows console
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+    except:
+        pass
+
 print("=" * 80)
 print("🚀 SCRIPT START - test_pose_change_local.py")
 print("=" * 80)
 print()
 
-import sys
 import json
 from pathlib import Path
 
@@ -35,6 +45,13 @@ try:
     print("      ✅ EditTaskInput imported")
 except Exception as e:
     print(f"      ❌ Failed to import EditTaskInput: {e}")
+    raise
+
+try:
+    from app.services.image.enums import EditMode
+    print("      ✅ EditMode imported")
+except Exception as e:
+    print(f"      ❌ Failed to import EditMode: {e}")
     raise
 
 print("[4/5] ✅ All app module imports completed")
@@ -118,9 +135,16 @@ def test_pose_change(source_image_path: str, pose_image_path: str):
     
     # Create task input
     print("[test_pose_change] Step 3: Creating EditTaskInput...")
+    print("[test_pose_change]   Preparing task data...")
+    print(f"[test_pose_change]   - task_id: test_local_pose_change")
+    print(f"[test_pose_change]   - mode: POSE_CHANGE")
+    print(f"[test_pose_change]   - source_image: {source_image_path}")
+    print(f"[test_pose_change]   - config.pose_image: {pose_image_path}")
+    
     try:
         task_input = EditTaskInput(
             task_id="test_local_pose_change",
+            mode=EditMode.POSE_CHANGE,  # ← Required field!
             source_image=source_image_path,  # Use full path directly
             config={
                 "pose_image": pose_image_path,  # Use full path directly
@@ -129,8 +153,9 @@ def test_pose_change(source_image_path: str, pose_image_path: str):
             },
             progress_callback=None
         )
-        print("[test_pose_change] ✅ EditTaskInput created:")
+        print("[test_pose_change] ✅ EditTaskInput created successfully:")
         print(f"[test_pose_change]   task_id: {task_input.task_id}")
+        print(f"[test_pose_change]   mode: {task_input.mode}")
         print(f"[test_pose_change]   source_image: {task_input.source_image}")
         print(f"[test_pose_change]   config: {task_input.config}")
     except Exception as e:
@@ -179,8 +204,7 @@ def test_pose_change(source_image_path: str, pose_image_path: str):
             print()
             print(f"🚫 Error Code:    {result.error_code}")
             print(f"💬 Error Message: {result.error_message}")
-            if result.error_details:
-                print(f"📝 Error Details: {result.error_details}")
+            # Note: error_details is not in EditTaskResult schema
         
         print()
         print("=" * 80)
