@@ -17,17 +17,20 @@ app = FastAPI(
 )
 
 # 配置 CORS
-# 支持 Vercel 预览域名（*.vercel.app）和生产域名
-from starlette.middleware.cors import CORSMiddleware as StarletteCORSMiddleware
+# 从环境变量读取允许的来源（支持任何前端域名）
+print("\n" + "="*60)
+print("🔒 CORS Configuration")
+print("="*60)
+cors_origins = settings.get_cors_origins
+print(f"Allowed Origins: {cors_origins}")
+print("="*60 + "\n")
 
 app.add_middleware(
-    StarletteCORSMiddleware,
-    # 使用正则表达式匹配所有 Vercel 域名和本地开发域名
-    allow_origin_regex=r"https://.*\.vercel\.app|http://localhost:\d+|https://formy-frontend\.vercel\.app",
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-    expose_headers=["*"],
+    CORSMiddleware,
+    allow_origins=cors_origins,  # 从环境变量 CORS_ORIGINS 读取
+    allow_credentials=settings.CORS_ALLOW_CREDENTIALS,
+    allow_methods=settings.CORS_ALLOW_METHODS,
+    allow_headers=settings.CORS_ALLOW_HEADERS,
 )
 
 # 确保上传目录存在

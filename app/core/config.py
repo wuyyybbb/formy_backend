@@ -98,16 +98,37 @@ class Settings(BaseSettings):
         return self.JWT_SECRET or self.SECRET_KEY
     
     # ==================== CORS 配置 ====================
-    CORS_ORIGINS: str = "http://localhost:3000,http://localhost:5173"
+    # 允许的前端来源（逗号分隔），支持任何域名
+    # 示例: "http://localhost:3000,https://your-domain.com,https://app.example.com"
+    CORS_ORIGINS: str = "http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000,http://127.0.0.1:5173"
     CORS_ALLOW_CREDENTIALS: bool = True
     CORS_ALLOW_METHODS: list = ["*"]
     CORS_ALLOW_HEADERS: list = ["*"]
     
     @property
     def get_cors_origins(self) -> list:
-        """解析 CORS 配置（支持逗号分隔的字符串）"""
+        """
+        解析 CORS 配置（支持逗号分隔的字符串）
+        
+        从环境变量 CORS_ORIGINS 读取允许的来源列表。
+        支持任何域名，不限于特定云平台。
+        
+        示例环境变量：
+            CORS_ORIGINS="https://formy-frontend.vercel.app,https://your-domain.com"
+        
+        Returns:
+            list: 允许的来源列表
+        """
         if isinstance(self.CORS_ORIGINS, str):
-            return [origin.strip() for origin in self.CORS_ORIGINS.split(",") if origin.strip()]
+            origins = [origin.strip() for origin in self.CORS_ORIGINS.split(",") if origin.strip()]
+            # 去重并保持顺序
+            seen = set()
+            unique_origins = []
+            for origin in origins:
+                if origin not in seen:
+                    seen.add(origin)
+                    unique_origins.append(origin)
+            return unique_origins
         return self.CORS_ORIGINS if isinstance(self.CORS_ORIGINS, list) else []
     
     # ==================== 邮件服务配置 ====================
