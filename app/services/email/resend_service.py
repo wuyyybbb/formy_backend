@@ -11,10 +11,10 @@ class ResendEmailService:
     """Resend 邮件服务类"""
     
     def __init__(self):
-        # 从环境变量读取，去除首尾空格
-        self.api_key = os.getenv("RESEND_API_KEY", "").strip()
-        self.from_email = os.getenv("FROM_EMAIL", "onboarding@resend.dev").strip()
-        self.api_url = "https://api.resend.com/emails"
+        # 从统一配置对象读取
+        self.api_key = (settings.RESEND_API_KEY or "").strip()
+        self.from_email = settings.FROM_EMAIL.strip()
+        self.api_url = settings.RESEND_API_URL
         
         print(f"🔧 邮件服务初始化:")
         print(f"   - API Key: {'已配置' if self.api_key else '❌ 未配置'}")

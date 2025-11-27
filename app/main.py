@@ -64,10 +64,24 @@ async def health_check():
 
 if __name__ == "__main__":
     import uvicorn
+    import os
+    
+    # 从配置读取，支持云平台的动态端口（如 Render 的 $PORT）
+    port = int(os.getenv("PORT", settings.PORT))
+    
+    print(f"\n{'='*60}")
+    print(f"🚀 Starting Formy Backend Server")
+    print(f"{'='*60}")
+    print(f"Host: {settings.HOST}")
+    print(f"Port: {port}")
+    print(f"Environment: {settings.ENVIRONMENT}")
+    print(f"Debug: {settings.DEBUG}")
+    print(f"{'='*60}\n")
+    
     uvicorn.run(
         "app.main:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=True
+        host=settings.HOST,
+        port=port,
+        reload=settings.DEBUG
     )
 

@@ -1,44 +1,94 @@
 """
-应用配置
+应用配置 - 统一环境变量管理
+
+所有配置项都支持通过环境变量设置，方便云平台部署。
+环境变量名与类属性名一致（大写）。
+
+示例：
+    export REDIS_URL="redis://localhost:6379/0"
+    export COMFYUI_BASE_URL="http://your-comfyui-server.com:7860"
 """
 from typing import Optional
 from pydantic_settings import BaseSettings
+import os
 
 
 class Settings(BaseSettings):
-    """应用配置类"""
+    """应用配置类 - 所有配置项都可通过环境变量覆盖"""
     
-    # 应用基础配置
+    # ==================== 应用基础配置 ====================
     APP_NAME: str = "Formy"
     APP_VERSION: str = "1.0.0"
-    DEBUG: bool = True
+    DEBUG: bool = False  # 生产环境默认关闭 Debug
+    ENVIRONMENT: str = "production"  # development / staging / production
     
     # API 配置
     API_V1_PREFIX: str = "/api/v1"
+    HOST: str = "0.0.0.0"
+    PORT: int = 8000
     
-    # Redis 配置
-    # 方式1: 使用完整的 Redis URL (优先，适合 Render 等云平台)
+    # ==================== Redis 配置 ====================
+    # 方式1: 使用完整的 Redis URL（推荐，适合云平台）
     REDIS_URL: Optional[str] = None
-    # 方式2: 分别配置各项（备选）
+    # 方式2: 分别配置各项（备选，本地开发）
     REDIS_HOST: str = "localhost"
     REDIS_PORT: int = 6379
     REDIS_DB: int = 0
     REDIS_PASSWORD: Optional[str] = None
     
-    # 文件存储配置
-    UPLOAD_DIR: str = "./uploads"          # 上传文件存储目录
-    RESULT_DIR: str = "./results"          # 结果文件存储目录
-    MAX_UPLOAD_SIZE: int = 10 * 1024 * 1024  # 最大上传文件大小（10MB）
+    @property
+    def get_redis_url(self) -> str:
+        """获取 Redis 连接 URL（优先使用 REDIS_URL）"""
+        if self.REDIS_URL:
+            return self.REDIS_URL
+        
+        # 如果没有 REDIS_URL，从分散的配置项构建
+        if self.REDIS_PASSWORD:
+            return f"redis://:{self.REDIS_PASSWORD}@{self.REDIS_HOST}:{self.REDIS_PORT}/{self.REDIS_DB}"
+        else:
+            return f"redis://{self.REDIS_HOST}:{self.REDIS_PORT}/{self.REDIS_DB}"
+    
+    # ==================== AI Engine 配置 ====================
+    # ComfyUI 服务地址（用于 AI 图像处理）
+    COMFYUI_BASE_URL: Optional[str] = None
+    COMFYUI_TIMEOUT: int = 300  # ComfyUI 请求超时时间（秒）
+    COMFYUI_POLL_INTERVAL: int = 2  # 轮询间隔（秒）
+    
+    # Engine 配置文件路径
+    ENGINE_CONFIG_PATH: str = "./engine_config.yml"
+    
+    # ==================== 数据库配置 ====================
+    # 预留数据库配置（如果未来需要）
+    DATABASE_URL: Optional[str] = None
+    DATABASE_POOL_SIZE: int = 10
+    DATABASE_MAX_OVERFLOW: int = 20
+    
+    # ==================== 文件存储配置 ====================
+    # 存储类型：local（本地文件系统）/ oss（阿里云OSS）/ s3（AWS S3）
+    STORAGE_TYPE: str = "local"
+    
+    # 本地存储配置
+    UPLOAD_DIR: str = "./uploads"
+    RESULT_DIR: str = "./results"
+    MAX_UPLOAD_SIZE: int = 10 * 1024 * 1024  # 10MB
     ALLOWED_EXTENSIONS: set = {".jpg", ".jpeg", ".png", ".webp"}
     
-    # 任务配置
-    TASK_RETENTION_DAYS: int = 7           # 任务结果保留天数
-    MAX_CONCURRENT_TASKS_PER_USER: int = 3 # 每用户最大并发任务数
+    # 阿里云 OSS 配置（当 STORAGE_TYPE=oss 时使用）
+    OSS_ENDPOINT: Optional[str] = None
+    OSS_ACCESS_KEY_ID: Optional[str] = None
+    OSS_ACCESS_KEY_SECRET: Optional[str] = None
+    OSS_BUCKET_NAME: Optional[str] = None
+    OSS_BUCKET_DOMAIN: Optional[str] = None  # 自定义域名（可选）
     
-    # JWT 配置
+    # ==================== 任务配置 ====================
+    TASK_RETENTION_DAYS: int = 7
+    MAX_CONCURRENT_TASKS_PER_USER: int = 3
+    TASK_QUEUE_NAME: str = "formy:tasks"
+    
+    # ==================== JWT 认证配置 ====================
     # 支持 JWT_SECRET 和 SECRET_KEY（向后兼容）
     JWT_SECRET: Optional[str] = None
-    SECRET_KEY: str = "formy-secret-key-change-in-production"
+    SECRET_KEY: str = "formy-secret-key-change-in-production-please"
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24  # 24 小时
     
@@ -47,29 +97,74 @@ class Settings(BaseSettings):
         """获取 JWT 密钥（优先使用 JWT_SECRET，否则使用 SECRET_KEY）"""
         return self.JWT_SECRET or self.SECRET_KEY
     
-    # CORS 配置
-    # 支持 Vercel 预览域名和生产域名
-    CORS_ORIGINS: str = "http://localhost:3000,http://localhost:5173,https://formy-frontend.vercel.app,https://*.vercel.app"
+    # ==================== CORS 配置 ====================
+    CORS_ORIGINS: str = "http://localhost:3000,http://localhost:5173"
+    CORS_ALLOW_CREDENTIALS: bool = True
+    CORS_ALLOW_METHODS: list = ["*"]
+    CORS_ALLOW_HEADERS: list = ["*"]
     
     @property
     def get_cors_origins(self) -> list:
-        """解析 CORS 配置（支持逗号分隔的字符串和通配符）"""
+        """解析 CORS 配置（支持逗号分隔的字符串）"""
         if isinstance(self.CORS_ORIGINS, str):
-            origins = [origin.strip() for origin in self.CORS_ORIGINS.split(",") if origin.strip()]
-            # 处理通配符：将 *.vercel.app 转换为所有匹配的域名
-            # 注意：FastAPI CORSMiddleware 不支持通配符，需要明确列出
-            # 这里我们返回所有配置的域名，通配符需要在运行时动态匹配
-            return origins
+            return [origin.strip() for origin in self.CORS_ORIGINS.split(",") if origin.strip()]
         return self.CORS_ORIGINS if isinstance(self.CORS_ORIGINS, list) else []
     
-    # Engine 配置文件路径
-    ENGINE_CONFIG_PATH: str = "./engine_config.yml"
+    # ==================== 邮件服务配置 ====================
+    # 邮件提供商：resend / aliyun / smtp
+    EMAIL_PROVIDER: str = "resend"
+    
+    # Resend 配置
+    RESEND_API_KEY: Optional[str] = None
+    RESEND_API_URL: str = "https://api.resend.com/emails"
+    
+    # 阿里云邮件推送配置
+    ALIYUN_EMAIL_REGION: str = "cn-hangzhou"
+    ALIYUN_EMAIL_ACCESS_KEY_ID: Optional[str] = None
+    ALIYUN_EMAIL_ACCESS_KEY_SECRET: Optional[str] = None
+    
+    # SMTP 配置（通用）
+    SMTP_HOST: Optional[str] = None
+    SMTP_PORT: int = 587
+    SMTP_USER: Optional[str] = None
+    SMTP_PASSWORD: Optional[str] = None
+    SMTP_USE_TLS: bool = True
+    
+    # 发件人配置
+    FROM_EMAIL: str = "noreply@formy.com"
+    FROM_NAME: str = "Formy"
+    
+    # ==================== 日志配置 ====================
+    LOG_LEVEL: str = "INFO"  # DEBUG / INFO / WARNING / ERROR
+    LOG_FORMAT: str = "json"  # json / text
+    
+    # ==================== 监控配置 ====================
+    SENTRY_DSN: Optional[str] = None  # Sentry 错误追踪
+    ENABLE_METRICS: bool = False  # 是否启用指标收集
     
     class Config:
         env_file = ".env"
         case_sensitive = True
+        # 允许从环境变量读取配置
+        env_file_encoding = 'utf-8'
 
 
 # 全局配置实例
 settings = Settings()
+
+
+def print_current_config():
+    """打印当前配置（用于调试，敏感信息会脱敏）"""
+    print("\n" + "="*60)
+    print("📋 Current Configuration")
+    print("="*60)
+    print(f"Environment: {settings.ENVIRONMENT}")
+    print(f"Debug Mode: {settings.DEBUG}")
+    print(f"API Version: {settings.APP_VERSION}")
+    print(f"\nRedis: {settings.get_redis_url[:30]}..." if settings.get_redis_url else "Redis: Not configured")
+    print(f"ComfyUI: {settings.COMFYUI_BASE_URL or 'Not configured'}")
+    print(f"Storage Type: {settings.STORAGE_TYPE}")
+    print(f"Email Provider: {settings.EMAIL_PROVIDER}")
+    print(f"CORS Origins: {', '.join(settings.get_cors_origins[:3])}")
+    print("="*60 + "\n")
 

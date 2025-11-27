@@ -1,6 +1,8 @@
 """
 Engine 注册表
 负责管理和注册所有 Engine，提供配置驱动的 Engine 选择
+
+支持在配置文件中使用 ${ENV_VAR} 占位符，从环境变量读取配置。
 """
 from typing import Dict, Any, Optional, Type
 import yaml
@@ -8,6 +10,7 @@ import yaml
 from app.services.image.engines.base import EngineBase, EngineType
 from app.services.image.engines.external_api import ExternalApiEngine
 from app.services.image.engines.comfyui_engine import ComfyUIEngine
+from app.utils.env_parser import load_yaml_with_env
 
 
 class EngineRegistry:
@@ -32,16 +35,27 @@ class EngineRegistry:
         self._load_config()
     
     def _load_config(self):
-        """从 YAML 文件加载配置"""
+        """从 YAML 文件加载配置（支持环境变量占位符）"""
         try:
-            with open(self.config_path, 'r', encoding='utf-8') as f:
-                self.config = yaml.safe_load(f) or {}
-            print(f"[EngineRegistry] 配置加载成功: {self.config_path}")
+            # 使用支持环境变量的加载器
+            self.config = load_yaml_with_env(self.config_path)
+            print(f"[EngineRegistry] ✅ 配置加载成功: {self.config_path}")
+            
+            # 打印已解析的 ComfyUI URL（用于调试）
+            engines = self.config.get("engines", {})
+            for engine_name, engine_cfg in engines.items():
+                if engine_cfg.get("type") == "comfyui":
+                    comfyui_url = engine_cfg.get("config", {}).get("comfyui_url")
+                    if comfyui_url:
+                        print(f"[EngineRegistry] 📍 {engine_name}: {comfyui_url}")
+                    
         except FileNotFoundError:
-            print(f"[EngineRegistry] 配置文件不存在: {self.config_path}")
+            print(f"[EngineRegistry] ❌ 配置文件不存在: {self.config_path}")
             self.config = {}
         except Exception as e:
-            print(f"[EngineRegistry] 配置加载失败: {e}")
+            print(f"[EngineRegistry] ❌ 配置加载失败: {e}")
+            import traceback
+            traceback.print_exc()
             self.config = {}
     
     def register_engine(
