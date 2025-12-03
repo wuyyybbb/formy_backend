@@ -361,7 +361,7 @@ class RunningHubEngine(EngineBase):
     
     def _parse_result(self, status_info: Dict) -> Dict:
         """
-        解析任务结果（官方 API 格式）
+        解析任务结果（官方 API 格式，支持多个输出文件）
         
         Args:
             status_info: 任务状态信息
@@ -371,13 +371,13 @@ class RunningHubEngine(EngineBase):
         """
         try:
             # 官方 API 返回格式：
-            # {"code": 0, "msg": "success", "data": [{"fileUrl": "xxx", "fileType": "png", ...}]}
+            # {"code": 0, "msg": "success", "data": [{"fileUrl": "xxx", "fileType": "png", "nodeId": "4"}, ...]}
             data = status_info.get("data")
             
             if not data or not isinstance(data, list) or len(data) == 0:
                 raise Exception(f"未找到输出数据，响应: {status_info}")
             
-            # 获取第一个输出文件
+            # 获取第一个输出文件（主要结果图）
             first_output = data[0]
             output_image_url = first_output.get("fileUrl")
             
@@ -392,6 +392,17 @@ class RunningHubEngine(EngineBase):
                 "raw_outputs": data,
                 "task_info": status_info
             }
+            
+            # 如果有第二个输出文件（对比图），也添加到结果中
+            if len(data) > 1:
+                comparison_output = data[1]
+                comparison_url = comparison_output.get("fileUrl")
+                if comparison_url:
+                    result["comparison_image"] = {
+                        "url": comparison_url,
+                        "type": comparison_output.get("fileType", "comparison")
+                    }
+                    self._log(f"找到对比图: {comparison_url}")
             
             self._log(f"任务结果解析成功，输出图片: {output_image_url}")
             
