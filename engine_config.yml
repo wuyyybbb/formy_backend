@@ -12,7 +12,7 @@ engines:
     config:
       api_key: "84427127c24546879969f10983fe578a"  # RunningHub API Key
       workflow_id: "1996080571212349442"  # 工作流 ID（从 URL 中提取）
-      api_base_url: "https://api.runninghub.ai"  # API 基础 URL
+      api_base_url: "https://www.runninghub.ai"  # API 基础 URL（使用主域名）
       timeout: 300  # 超时时间（秒）
       poll_interval: 3  # 轮询间隔（秒）
   
