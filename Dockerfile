@@ -33,6 +33,9 @@ COPY . .
 # 创建必要的目录
 RUN mkdir -p uploads/source uploads/reference uploads/result
 
+# 赋予启动脚本执行权限
+RUN chmod +x start_services.sh
+
 # 暴露端口
 EXPOSE 8000
 
@@ -40,11 +43,5 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD python -c "import requests; requests.get('http://localhost:8000/health')" || exit 1
 
-# 启动命令（使用 gunicorn + uvicorn workers）
-CMD ["gunicorn", "app.main:app", \
-     "--workers", "2", \
-     "--worker-class", "uvicorn.workers.UvicornWorker", \
-     "--bind", "0.0.0.0:8000", \
-     "--timeout", "120", \
-     "--access-logfile", "-", \
-     "--error-logfile", "-"]
+# 启动命令（同时启动 API 服务器和 Worker）
+CMD ["bash", "start_services.sh"]
