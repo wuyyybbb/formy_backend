@@ -32,7 +32,7 @@ class RunningHubEngine(EngineBase):
         self.api_key = self.get_config("api_key")
         self.workflow_id = self.get_config("workflow_id")
         self.api_base_url = self.get_config("api_base_url", "https://api.runninghub.ai")
-        self.timeout = self.get_config("timeout", 300)
+        self.timeout = self.get_config("timeout", 300)  # 最大等待时间 5 分钟
         self.poll_interval = self.get_config("poll_interval", 3)
         
         if not self.api_key:
@@ -278,16 +278,21 @@ class RunningHubEngine(EngineBase):
             
             # 解析响应：{"code": 0, "msg": "success", "data": {"taskId": "xxx", ...}}
             result = response.json()
+            self._log(f"提交响应: {result}")
             
             if result.get("code") != 0:
-                raise Exception(f"提交失败: {result.get('msg')}")
+                error_msg = result.get('msg', '未知错误')
+                self._log(f"❌ 提交失败，错误码: {result.get('code')}, 错误信息: {error_msg}", "ERROR")
+                raise Exception(f"提交失败: {error_msg}")
             
             task_id = result.get("data", {}).get("taskId")
             
             if not task_id:
+                self._log(f"❌ 未获取到任务 ID，完整响应: {result}", "ERROR")
                 raise Exception(f"未获取到任务 ID，响应: {result}")
             
-            self._log(f"工作流已提交，任务 ID: {task_id}")
+            self._log(f"✅ 工作流已提交，任务 ID: {task_id}")
+            self._log(f"🔗 可在 RunningHub 平台查看任务: https://{self.api_base_url.split('//')[1]}/task/{task_id}")
             
             return task_id
             
@@ -317,10 +322,15 @@ class RunningHubEngine(EngineBase):
         self._log(f"等待任务完成: {task_id}")
         
         while True:
-            # 检查超时
+            # 检查超时（5 分钟）
             elapsed_time = time.time() - start_time
             if elapsed_time > self.timeout:
-                raise TimeoutError(f"任务执行超时: {self.timeout} 秒")
+                # 友好的超时提示
+                raise TimeoutError(
+                    f"AI 处理超时：当前使用人数较多，系统繁忙。"
+                    f"建议您稍后再试，或联系客服获取帮助。"
+                    f"（已等待 {int(elapsed_time)} 秒）"
+                )
             
             # 查询任务状态
             try:
