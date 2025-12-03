@@ -239,17 +239,22 @@ class PoseChangePipeline(PipelineBase):
             comparison_path = None
             comparison_filename = None
             if comparison_image_info:
+                self._log_step(ProcessingStep.COMPLETE, f"找到对比图信息: {comparison_image_info}")
                 comparison_url = comparison_image_info.get("url")
                 if comparison_url:
                     try:
+                        self._log_step(ProcessingStep.COMPLETE, f"开始下载对比图: {comparison_url}")
                         comp_response = requests.get(comparison_url, timeout=60)
                         comp_response.raise_for_status()
                         comparison_filename = f"{task_id}_comparison.jpg"
                         comparison_path = Path(settings.RESULT_DIR) / comparison_filename
                         comp_img = Image.open(io.BytesIO(comp_response.content))
                         save_image(comp_img, str(comparison_path), format="JPEG", quality=95)
+                        self._log_step(ProcessingStep.COMPLETE, f"对比图已保存: /results/{comparison_filename}")
                     except Exception as e:
                         self._log_step(ProcessingStep.COMPLETE, f"下载对比图片失败: {e}")
+            else:
+                self._log_step(ProcessingStep.COMPLETE, "未找到对比图信息")
             
             # 生成缩略图
             thumbnail_path = None
