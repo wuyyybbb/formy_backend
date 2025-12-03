@@ -22,10 +22,13 @@ class PoseChangePipeline(PipelineBase):
         super().__init__()
         # 获取 Engine 注册表
         self.engine_registry = get_engine_registry()
-        # 获取 ComfyUI Engine（从配置中）
+        # 获取姿势迁移 Engine（从配置中，优先使用 RunningHub）
         self.comfyui_engine = self.engine_registry.get_engine_for_step("pose_change", "pose_transfer")
         if not self.comfyui_engine:
-            # 如果配置中没有，尝试直接获取
+            # 如果配置中没有，尝试直接获取 RunningHub Engine
+            self.comfyui_engine = self.engine_registry.get_engine("runninghub_pose_transfer")
+        if not self.comfyui_engine:
+            # 最后尝试旧的 ComfyUI Engine（向后兼容）
             self.comfyui_engine = self.engine_registry.get_engine("comfyui_pose_transfer")
     
     def execute(self, task_input: EditTaskInput) -> EditTaskResult:
@@ -107,7 +110,7 @@ class PoseChangePipeline(PipelineBase):
         
         # 检查 Engine 是否可用
         if not self.comfyui_engine:
-            self._log_step(ProcessingStep.COMPLETE, "ComfyUI Engine 未配置")
+            self._log_step(ProcessingStep.COMPLETE, "姿势迁移 Engine 未配置（需要 RunningHub 或 ComfyUI）")
             return False
         
         return True
