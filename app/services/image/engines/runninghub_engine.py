@@ -103,14 +103,14 @@ class RunningHubEngine(EngineBase):
     
     def _prepare_request(self, input_data: Any, **kwargs) -> Dict:
         """
-        准备 RunningHub API 请求参数
+        准备 RunningHub API 请求参数（上传文件并返回文件名）
         
         Args:
             input_data: 输入数据
             **kwargs: 其他参数
             
         Returns:
-            Dict: 请求参数
+            Dict: 包含已上传文件名的参数字典
         """
         params = {}
         
@@ -123,38 +123,32 @@ class RunningHubEngine(EngineBase):
             pose_image = None
         
         # 从 kwargs 获取（优先级更高）
-        raw_image_url = kwargs.get("raw_image_url")
-        pose_image_url = kwargs.get("pose_image_url")
         raw_image_path = kwargs.get("raw_image_path") or raw_image
         pose_image_path = kwargs.get("pose_image_path") or pose_image
         
-        # 如果提供了 URL，直接使用
-        if raw_image_url:
-            params["raw_image"] = raw_image_url
-        elif raw_image_path:
-            # 如果是文件路径，需要先上传
-            params["raw_image"] = self._upload_image(raw_image_path)
+        # 上传原始图片
+        if raw_image_path:
+            self._log(f"正在上传原始图片: {raw_image_path}")
+            uploaded_filename = self._upload_image(raw_image_path)
+            params["raw_image"] = uploaded_filename
         
-        if pose_image_url:
-            params["pose_image"] = pose_image_url
-        elif pose_image_path:
-            params["pose_image"] = self._upload_image(pose_image_path)
-        
-        # 添加其他参数
-        extra_params = self.get_config("extra_params", {})
-        params.update(extra_params)
+        # 上传姿势参考图
+        if pose_image_path:
+            self._log(f"正在上传姿势参考图: {pose_image_path}")
+            uploaded_filename = self._upload_image(pose_image_path)
+            params["pose_image"] = uploaded_filename
         
         return params
     
     def _upload_image(self, image_path: str) -> str:
         """
-        上传图片到 RunningHub
+        上传图片到 RunningHub（官方 API 格式）
         
         Args:
             image_path: 本地图片路径
             
         Returns:
-            str: 图片 URL
+            str: 图片文件名（用于后续任务提交）
         """
         try:
             import os
@@ -163,68 +157,98 @@ class RunningHubEngine(EngineBase):
             if not os.path.exists(image_path):
                 raise FileNotFoundError(f"图片文件不存在: {image_path}")
             
-            # 读取图片
-            with open(image_path, 'rb') as f:
-                image_data = f.read()
-            
             filename = os.path.basename(image_path)
             
-            # 上传到 RunningHub
-            url = f"{self.api_base_url}/v1/upload"
+            # 上传到 RunningHub（官方端点）
+            url = f"{self.api_base_url}/task/openapi/upload"
             headers = {
-                "Authorization": f"Bearer {self.api_key}"
+                'Host': 'www.runninghub.cn'
             }
-            files = {
-                "file": (filename, image_data, "image/jpeg")
+            data = {
+                'apiKey': self.api_key,
+                'fileType': 'input'
             }
             
-            response = requests.post(url, headers=headers, files=files, timeout=60)
+            with open(image_path, 'rb') as f:
+                files = {'file': f}
+                response = requests.post(url, headers=headers, files=files, data=data, timeout=60)
+            
             response.raise_for_status()
-            
             result = response.json()
-            image_url = result.get("url") or result.get("file_url")
             
-            if not image_url:
-                raise Exception("上传响应中没有返回图片 URL")
+            # 官方 API 返回格式：{"code": 0, "msg": "success", "data": {"fileName": "api/xxx.jpg", "fileType": "input"}}
+            if result.get("code") != 0:
+                raise Exception(f"上传失败: {result.get('msg')}")
             
-            self._log(f"图片已上传到 RunningHub: {filename} -> {image_url}")
+            uploaded_filename = result.get("data", {}).get("fileName")
+            if not uploaded_filename:
+                raise Exception("上传响应中没有返回文件名")
             
-            return image_url
+            self._log(f"图片已上传到 RunningHub: {filename} -> {uploaded_filename}")
+            
+            return uploaded_filename
             
         except Exception as e:
             raise Exception(f"上传图片失败: {e}")
     
     def _submit_workflow(self, params: Dict) -> str:
         """
-        提交工作流到 RunningHub
+        提交工作流到 RunningHub（官方 API 格式）
         
         Args:
-            params: 请求参数
+            params: 包含 raw_image 和 pose_image 文件名的字典
             
         Returns:
             str: 任务 ID
         """
         try:
-            # 构建请求
-            url = f"{self.api_base_url}/v1/workflows/{self.workflow_id}/run"
+            # 构建 nodeInfoList（官方 API 格式）
+            # 根据工作流需要，构建节点信息列表
+            node_info_list = []
+            
+            # 添加原始图片节点
+            if "raw_image" in params:
+                node_info_list.append({
+                    "nodeId": "source_image",  # 根据实际工作流调整
+                    "fieldName": "image",
+                    "fieldValue": params["raw_image"]
+                })
+            
+            # 添加姿势参考图节点
+            if "pose_image" in params:
+                node_info_list.append({
+                    "nodeId": "pose_image",  # 根据实际工作流调整
+                    "fieldName": "image",
+                    "fieldValue": params["pose_image"]
+                })
+            
+            # 构建请求（官方端点）
+            url = f"{self.api_base_url}/task/openapi/create"
             headers = {
-                "Authorization": f"Bearer {self.api_key}",
-                "Content-Type": "application/json"
+                'Host': 'www.runninghub.cn',
+                'Content-Type': 'application/json'
             }
             
             payload = {
-                "inputs": params
+                "apiKey": self.api_key,
+                "workflowId": self.workflow_id,
+                "nodeInfoList": node_info_list
             }
             
             self._log(f"提交工作流到 RunningHub: {url}")
+            self._log(f"节点信息: {node_info_list}")
             
             # 发送请求
             response = requests.post(url, headers=headers, json=payload, timeout=30)
             response.raise_for_status()
             
-            # 解析响应
+            # 解析响应：{"code": 0, "msg": "success", "data": {"taskId": "xxx", ...}}
             result = response.json()
-            task_id = result.get("task_id") or result.get("id") or result.get("run_id")
+            
+            if result.get("code") != 0:
+                raise Exception(f"提交失败: {result.get('msg')}")
+            
+            task_id = result.get("data", {}).get("taskId")
             
             if not task_id:
                 raise Exception(f"未获取到任务 ID，响应: {result}")
@@ -267,27 +291,36 @@ class RunningHubEngine(EngineBase):
             # 查询任务状态
             try:
                 status_info = self._get_task_status(task_id)
-                status = status_info.get("status")
+                code = status_info.get("code")
+                msg = status_info.get("msg")
+                data = status_info.get("data")
                 
-                self._log(f"任务状态: {status} (已用时 {int(elapsed_time)} 秒)")
+                # 官方 API 状态码：
+                # 0: 成功, 804: 运行中, 813: 排队中, 805: 失败
                 
-                if status in ["completed", "success", "finished"]:
+                if code == 0 and data:
                     # 任务完成
+                    self._log(f"任务完成 (已用时 {int(elapsed_time)} 秒)")
                     result = self._parse_result(status_info)
                     return result
                 
-                elif status in ["failed", "error", "cancelled"]:
+                elif code == 805:
                     # 任务失败
-                    error_msg = status_info.get("error") or status_info.get("message") or "未知错误"
+                    failed_reason = data.get("failedReason") if data else None
+                    error_msg = "未知错误"
+                    if failed_reason:
+                        error_msg = f"{failed_reason.get('node_name')}: {failed_reason.get('exception_message')}"
                     raise Exception(f"任务执行失败: {error_msg}")
                 
-                elif status in ["running", "pending", "queued", "processing"]:
-                    # 任务进行中，继续等待
+                elif code in [804, 813]:
+                    # 运行中或排队中
+                    status_text = "运行中" if code == 804 else "排队中"
+                    self._log(f"任务{status_text} (已用时 {int(elapsed_time)} 秒)")
                     time.sleep(self.poll_interval)
                 
                 else:
-                    # 未知状态，继续等待
-                    self._log(f"未知任务状态: {status}", "WARNING")
+                    # 未知状态
+                    self._log(f"未知状态码: {code}, msg: {msg}", "WARNING")
                     time.sleep(self.poll_interval)
                     
             except Exception as e:
@@ -299,7 +332,7 @@ class RunningHubEngine(EngineBase):
     
     def _get_task_status(self, task_id: str) -> Dict:
         """
-        查询任务状态
+        查询任务状态（官方 API 格式）
         
         Args:
             task_id: 任务 ID
@@ -308,12 +341,18 @@ class RunningHubEngine(EngineBase):
             Dict: 任务状态信息
         """
         try:
-            url = f"{self.api_base_url}/v1/tasks/{task_id}"
+            # 官方端点
+            url = f"{self.api_base_url}/task/openapi/outputs"
             headers = {
-                "Authorization": f"Bearer {self.api_key}"
+                'Host': 'www.runninghub.cn',
+                'Content-Type': 'application/json'
+            }
+            payload = {
+                "apiKey": self.api_key,
+                "taskId": task_id
             }
             
-            response = requests.get(url, headers=headers, timeout=10)
+            response = requests.post(url, headers=headers, json=payload, timeout=10)
             response.raise_for_status()
             
             return response.json()
@@ -323,7 +362,7 @@ class RunningHubEngine(EngineBase):
     
     def _parse_result(self, status_info: Dict) -> Dict:
         """
-        解析任务结果
+        解析任务结果（官方 API 格式）
         
         Args:
             status_info: 任务状态信息
@@ -332,22 +371,16 @@ class RunningHubEngine(EngineBase):
             Dict: 解析后的结果
         """
         try:
-            # 提取输出
-            outputs = status_info.get("outputs") or status_info.get("output") or {}
+            # 官方 API 返回格式：
+            # {"code": 0, "msg": "success", "data": [{"fileUrl": "xxx", "fileType": "png", ...}]}
+            data = status_info.get("data")
             
-            # 提取输出图片 URL
-            output_image_url = None
+            if not data or not isinstance(data, list) or len(data) == 0:
+                raise Exception(f"未找到输出数据，响应: {status_info}")
             
-            # 尝试多种可能的字段名
-            if isinstance(outputs, dict):
-                output_image_url = (
-                    outputs.get("output_image") or 
-                    outputs.get("image") or 
-                    outputs.get("result") or
-                    outputs.get("output")
-                )
-            elif isinstance(outputs, str):
-                output_image_url = outputs
+            # 获取第一个输出文件
+            first_output = data[0]
+            output_image_url = first_output.get("fileUrl")
             
             if not output_image_url:
                 raise Exception(f"未找到输出图片 URL，响应: {status_info}")
@@ -355,9 +388,9 @@ class RunningHubEngine(EngineBase):
             result = {
                 "output_image": {
                     "url": output_image_url,
-                    "type": "output"
+                    "type": first_output.get("fileType", "output")
                 },
-                "raw_outputs": outputs,
+                "raw_outputs": data,
                 "task_info": status_info
             }
             
