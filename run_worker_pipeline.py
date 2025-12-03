@@ -44,7 +44,7 @@ class PipelineWorker:
     def start(self):
         """启动 Worker 循环"""
         print("[Worker] Pipeline Worker 已启动，等待任务...")
-        print("[Worker] 将调用真实的 ComfyUI Pipeline 处理任务")
+        print("[Worker] 会调用真实的 Pipeline 处理任务（RunningHub / ComfyUI）")
         print("[Worker] 按 Ctrl+C 停止\n")
         
         self.is_running = True
@@ -299,7 +299,7 @@ class PipelineWorker:
             )
             
             print(f"[Worker] 📦 Pipeline 输入已准备完成")
-            progress_callback(15, "正在调用 ComfyUI Pipeline...")
+            progress_callback(15, "正在调用 AI 引擎处理...")
             
             # 执行 Pipeline
             result = self.pose_pipeline.execute(task_input)
