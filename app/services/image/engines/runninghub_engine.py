@@ -161,9 +161,8 @@ class RunningHubEngine(EngineBase):
             
             # 上传到 RunningHub（官方端点）
             url = f"{self.api_base_url}/task/openapi/upload"
-            headers = {
-                'Host': 'www.runninghub.cn'
-            }
+            # Host header 会自动从 URL 中提取，不需要手动设置
+            headers = {}
             data = {
                 'apiKey': self.api_key,
                 'fileType': 'input'
@@ -203,21 +202,23 @@ class RunningHubEngine(EngineBase):
         """
         try:
             # 构建 nodeInfoList（官方 API 格式）
-            # 根据工作流需要，构建节点信息列表
+            # 根据工作流节点构建节点信息列表
+            # 节点 #3: input:raw_image:1 - 原始图片
+            # 节点 #7: input:pose_image:2 - 姿势参考图
             node_info_list = []
             
-            # 添加原始图片节点
+            # 添加原始图片节点（节点 #3）
             if "raw_image" in params:
                 node_info_list.append({
-                    "nodeId": "source_image",  # 根据实际工作流调整
+                    "nodeId": "3",
                     "fieldName": "image",
                     "fieldValue": params["raw_image"]
                 })
             
-            # 添加姿势参考图节点
+            # 添加姿势参考图节点（节点 #7）
             if "pose_image" in params:
                 node_info_list.append({
-                    "nodeId": "pose_image",  # 根据实际工作流调整
+                    "nodeId": "7",
                     "fieldName": "image",
                     "fieldValue": params["pose_image"]
                 })
@@ -225,7 +226,6 @@ class RunningHubEngine(EngineBase):
             # 构建请求（官方端点）
             url = f"{self.api_base_url}/task/openapi/create"
             headers = {
-                'Host': 'www.runninghub.cn',
                 'Content-Type': 'application/json'
             }
             
@@ -344,7 +344,6 @@ class RunningHubEngine(EngineBase):
             # 官方端点
             url = f"{self.api_base_url}/task/openapi/outputs"
             headers = {
-                'Host': 'www.runninghub.cn',
                 'Content-Type': 'application/json'
             }
             payload = {
