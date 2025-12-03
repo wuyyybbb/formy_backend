@@ -168,12 +168,29 @@ class RunningHubEngine(EngineBase):
                 'fileType': 'input'
             }
             
-            with open(image_path, 'rb') as f:
-                files = {'file': f}
-                response = requests.post(url, headers=headers, files=files, data=data, timeout=60)
-            
-            response.raise_for_status()
-            result = response.json()
+            # 上传文件（添加重试机制）
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    self._log(f"上传图片，尝试 {attempt + 1}/{max_retries}: {filename}")
+                    with open(image_path, 'rb') as f:
+                        files = {'file': f}
+                        response = requests.post(url, headers=headers, files=files, data=data, timeout=90)
+                    response.raise_for_status()
+                    result = response.json()
+                    break  # 成功则跳出重试循环
+                except requests.exceptions.Timeout as e:
+                    if attempt < max_retries - 1:
+                        self._log(f"上传超时，{5}秒后重试...", "WARNING")
+                        time.sleep(5)
+                    else:
+                        raise Exception(f"上传图片超时（已重试{max_retries}次）: {filename}")
+                except requests.exceptions.RequestException as e:
+                    if attempt < max_retries - 1:
+                        self._log(f"上传失败: {e}，{5}秒后重试...", "WARNING")
+                        time.sleep(5)
+                    else:
+                        raise
             
             # 官方 API 返回格式：{"code": 0, "msg": "success", "data": {"fileName": "api/xxx.jpg", "fileType": "input"}}
             if result.get("code") != 0:
@@ -238,9 +255,26 @@ class RunningHubEngine(EngineBase):
             self._log(f"提交工作流到 RunningHub: {url}")
             self._log(f"节点信息: {node_info_list}")
             
-            # 发送请求
-            response = requests.post(url, headers=headers, json=payload, timeout=30)
-            response.raise_for_status()
+            # 发送请求（添加重试机制）
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    self._log(f"提交任务，尝试 {attempt + 1}/{max_retries}")
+                    response = requests.post(url, headers=headers, json=payload, timeout=60)
+                    response.raise_for_status()
+                    break  # 成功则跳出重试循环
+                except requests.exceptions.Timeout as e:
+                    if attempt < max_retries - 1:
+                        self._log(f"请求超时，{3}秒后重试...", "WARNING")
+                        time.sleep(3)
+                    else:
+                        raise Exception(f"提交工作流超时（已重试{max_retries}次）: {e}")
+                except requests.exceptions.RequestException as e:
+                    if attempt < max_retries - 1:
+                        self._log(f"请求失败: {e}，{3}秒后重试...", "WARNING")
+                        time.sleep(3)
+                    else:
+                        raise
             
             # 解析响应：{"code": 0, "msg": "success", "data": {"taskId": "xxx", ...}}
             result = response.json()
@@ -351,10 +385,24 @@ class RunningHubEngine(EngineBase):
                 "taskId": task_id
             }
             
-            response = requests.post(url, headers=headers, json=payload, timeout=10)
-            response.raise_for_status()
-            
-            return response.json()
+            # 查询状态（添加重试）
+            max_retries = 2
+            for attempt in range(max_retries):
+                try:
+                    response = requests.post(url, headers=headers, json=payload, timeout=30)
+                    response.raise_for_status()
+                    return response.json()
+                except requests.exceptions.Timeout:
+                    if attempt < max_retries - 1:
+                        self._log(f"查询超时，重试...", "WARNING")
+                        time.sleep(2)
+                    else:
+                        raise
+                except Exception:
+                    if attempt < max_retries - 1:
+                        time.sleep(2)
+                    else:
+                        raise
             
         except Exception as e:
             raise Exception(f"查询任务状态失败: {e}")
