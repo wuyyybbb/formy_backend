@@ -12,6 +12,7 @@ class EngineType(str, Enum):
     EXTERNAL_API = "external_api"      # 闭源 API 调用
     COMFYUI = "comfyui"                # ComfyUI 工作流
     LOCAL_MODEL = "local_model"        # 本地模型
+    RUNNINGHUB = "runninghub"          # RunningHub 云端工作流
 
 
 class EngineBase(ABC):

@@ -5,93 +5,97 @@
 # Engine 定义
 # ============================================
 engines:
-  # 人脸检测 API
-  face_detection_api:
-    type: external_api
+  # ========== RunningHub 云端工作流（推荐使用） ==========
+  # RunningHub 姿势迁移工作流
+  runninghub_pose_transfer:
+    type: runninghub
     config:
-      api_url: "https://api.example.com/face-detection"
-      api_key: "${FACE_DETECTION_API_KEY}"
-      timeout: 30
+      api_key: "84427127c24546879969f10983fe578a"  # RunningHub API Key
+      workflow_id: "1996080571212349442"  # 工作流 ID（从 URL 中提取）
+      api_base_url: "https://api.runninghub.ai"  # API 基础 URL
+      timeout: 300  # 超时时间（秒）
+      poll_interval: 3  # 轮询间隔（秒）
   
-  # 人脸替换 API
-  face_swap_api:
-    type: external_api
-    config:
-      api_url: "https://api.example.com/face-swap"
-      api_key: "${FACE_SWAP_API_KEY}"
-      timeout: 60
+  # ========== 已废弃的引擎（不再使用） ==========
+  # 人脸检测 API（已废弃）
+  # face_detection_api:
+  #   type: external_api
+  #   config:
+  #     api_url: "https://api.example.com/face-detection"
+  #     api_key: "${FACE_DETECTION_API_KEY}"
+  #     timeout: 30
   
-  # 人像分割 API
-  segmentation_api:
-    type: external_api
-    config:
-      api_url: "https://api.example.com/segmentation"
-      api_key: "${SEGMENTATION_API_KEY}"
-      timeout: 30
+  # 人脸替换 API（已废弃）
+  # face_swap_api:
+  #   type: external_api
+  #   config:
+  #     api_url: "https://api.example.com/face-swap"
+  #     api_key: "${FACE_SWAP_API_KEY}"
+  #     timeout: 60
   
-  # ComfyUI 换头工作流
-  comfyui_head_swap:
-    type: comfyui
-    config:
-      comfyui_url: "http://localhost:8188"
-      workflow_path: "./workflows/head_swap_workflow.json"
-      timeout: 300
+  # 人像分割 API（已废弃）
+  # segmentation_api:
+  #   type: external_api
+  #   config:
+  #     api_url: "https://api.example.com/segmentation"
+  #     api_key: "${SEGMENTATION_API_KEY}"
+  #     timeout: 30
   
-  # ComfyUI 换背景工作流
-  comfyui_background:
-    type: comfyui
-    config:
-      comfyui_url: "http://localhost:8188"
-      workflow_path: "./workflows/background_workflow.json"
-      timeout: 300
+  # ComfyUI 换头工作流（已废弃）
+  # comfyui_head_swap:
+  #   type: comfyui
+  #   config:
+  #     comfyui_url: "http://localhost:8188"
+  #     workflow_path: "./workflows/head_swap_workflow.json"
+  #     timeout: 300
   
-  # ComfyUI 姿势迁移工作流
-  comfyui_pose_transfer:
-    type: comfyui
-    config:
-      comfyui_url: "${COMFYUI_BASE_URL}"  # ComfyUI 服务地址（从环境变量读取）
-      workflow_path: "./workflows/pose_swap_workflow.json"
-      timeout: ${COMFYUI_TIMEOUT:300}  # 超时时间（秒），默认300
-      poll_interval: ${COMFYUI_POLL_INTERVAL:2}  # 轮询间隔（秒），默认2
+  # ComfyUI 换背景工作流（已废弃）
+  # comfyui_background:
+  #   type: comfyui
+  #   config:
+  #     comfyui_url: "http://localhost:8188"
+  #     workflow_path: "./workflows/background_workflow.json"
+  #     timeout: 300
+  
+  # ComfyUI 姿势迁移工作流（已废弃 - 已替换为 RunningHub）
+  # comfyui_pose_transfer:
+  #   type: comfyui
+  #   config:
+  #     comfyui_url: "${COMFYUI_BASE_URL}"
+  #     workflow_path: "./workflows/pose_swap_workflow.json"
+  #     timeout: 300
+  #     poll_interval: 2
 
 # ============================================
 # Pipeline 配置
 # ============================================
 pipelines:
-  # 换头 Pipeline
+  # 换头 Pipeline（暂时禁用）
   head_swap:
-    enabled: true
+    enabled: false
     steps:
-      face_detection:
-        engine: face_detection_api
-        description: "检测人脸"
-      face_swap:
-        engine: face_swap_api
-        description: "替换人脸"
-      # 可选：使用 ComfyUI 完整工作流
-      # full_workflow:
-      #   engine: comfyui_head_swap
-      #   description: "完整换头流程"
+      # face_detection:
+      #   engine: face_detection_api
+      #   description: "检测人脸"
+      # face_swap:
+      #   engine: face_swap_api
+      #   description: "替换人脸"
   
-  # 换背景 Pipeline
+  # 换背景 Pipeline（暂时禁用）
   background_change:
-    enabled: true
+    enabled: false
     steps:
-      segmentation:
-        engine: segmentation_api
-        description: "人像分割"
-      # 可选：使用 ComfyUI 完整工作流
-      # full_workflow:
-      #   engine: comfyui_background
-      #   description: "完整换背景流程"
+      # segmentation:
+      #   engine: segmentation_api
+      #   description: "人像分割"
   
-  # 换姿势 Pipeline
+  # 换姿势 Pipeline（使用 RunningHub）
   pose_change:
     enabled: true
     steps:
       pose_transfer:
-        engine: comfyui_pose_transfer
-        description: "姿势迁移"
+        engine: runninghub_pose_transfer  # 使用 RunningHub 引擎
+        description: "RunningHub 姿势迁移工作流"
 
 # ============================================
 # 全局配置

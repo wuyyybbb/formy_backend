@@ -10,6 +10,7 @@ import yaml
 from app.services.image.engines.base import EngineBase, EngineType
 from app.services.image.engines.external_api import ExternalApiEngine
 from app.services.image.engines.comfyui_engine import ComfyUIEngine
+from app.services.image.engines.runninghub_engine import RunningHubEngine
 from app.utils.env_parser import load_yaml_with_env
 
 
@@ -27,7 +28,8 @@ class EngineRegistry:
         self.engines: Dict[str, EngineBase] = {}
         self.engine_classes: Dict[str, Type[EngineBase]] = {
             "external_api": ExternalApiEngine,
-            "comfyui": ComfyUIEngine
+            "comfyui": ComfyUIEngine,
+            "runninghub": RunningHubEngine
         }
         self.config: Dict[str, Any] = {}
         
