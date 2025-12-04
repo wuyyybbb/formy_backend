@@ -175,7 +175,8 @@ class RunningHubEngine(EngineBase):
                     self._log(f"上传图片，尝试 {attempt + 1}/{max_retries}: {filename}")
                     with open(image_path, 'rb') as f:
                         files = {'file': f}
-                        response = requests.post(url, headers=headers, files=files, data=data, timeout=90)
+                        # 上传接口：连接超时 10 秒，读取超时 60 秒（上传图片可能较慢）
+                        response = requests.post(url, headers=headers, files=files, data=data, timeout=(10, 60))
                     response.raise_for_status()
                     result = response.json()
                     break  # 成功则跳出重试循环
@@ -256,23 +257,34 @@ class RunningHubEngine(EngineBase):
             self._log(f"节点信息: {node_info_list}")
             
             # 发送请求（添加重试机制）
-            max_retries = 3
+            # 根据官方建议：创建任务接口在请求量大时会比较慢，建议 30 秒超时，但一定可以成功
+            max_retries = 5  # 增加重试次数
+            connect_timeout = 15  # 连接超时 15 秒
+            read_timeout = 45  # 读取超时 45 秒（官方建议至少 30 秒）
+            
             for attempt in range(max_retries):
                 try:
                     self._log(f"提交任务，尝试 {attempt + 1}/{max_retries}")
-                    response = requests.post(url, headers=headers, json=payload, timeout=60)
+                    response = requests.post(
+                        url, 
+                        headers=headers, 
+                        json=payload, 
+                        timeout=(connect_timeout, read_timeout)  # (连接超时, 读取超时)
+                    )
                     response.raise_for_status()
                     break  # 成功则跳出重试循环
                 except requests.exceptions.Timeout as e:
                     if attempt < max_retries - 1:
-                        self._log(f"请求超时，{3}秒后重试...", "WARNING")
-                        time.sleep(3)
+                        retry_delay = 5  # 增加重试间隔
+                        self._log(f"请求超时（可能是 RunningHub 请求量大），{retry_delay}秒后重试...", "WARNING")
+                        time.sleep(retry_delay)
                     else:
                         raise Exception(f"提交工作流超时（已重试{max_retries}次）: {e}")
                 except requests.exceptions.RequestException as e:
                     if attempt < max_retries - 1:
-                        self._log(f"请求失败: {e}，{3}秒后重试...", "WARNING")
-                        time.sleep(3)
+                        retry_delay = 5
+                        self._log(f"请求失败: {e}，{retry_delay}秒后重试...", "WARNING")
+                        time.sleep(retry_delay)
                     else:
                         raise
             
@@ -396,10 +408,11 @@ class RunningHubEngine(EngineBase):
             }
             
             # 查询状态（添加重试）
-            max_retries = 2
+            max_retries = 3
             for attempt in range(max_retries):
                 try:
-                    response = requests.post(url, headers=headers, json=payload, timeout=30)
+                    # 查询接口：连接超时 5 秒，读取超时 10 秒（官方建议其他接口 5 秒即可）
+                    response = requests.post(url, headers=headers, json=payload, timeout=(5, 10))
                     response.raise_for_status()
                     return response.json()
                 except requests.exceptions.Timeout:
@@ -487,8 +500,8 @@ class RunningHubEngine(EngineBase):
             if not url:
                 raise ValueError("图片信息中没有 URL")
             
-            # 下载图片
-            response = requests.get(url, timeout=60)
+            # 下载图片（连接超时 10 秒，读取超时 60 秒）
+            response = requests.get(url, timeout=(10, 60))
             response.raise_for_status()
             
             # 保存图片
