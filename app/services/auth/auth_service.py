@@ -8,6 +8,7 @@ from typing import Optional, Dict
 import redis
 import json
 import jwt
+import bcrypt
 from jwt.exceptions import InvalidTokenError as JWTError
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -273,6 +274,132 @@ class AuthService:
             return payload
         except JWTError as e:
             print(f"JWT 解码失败: {e}")
+            return None
+    
+    def hash_password(self, password: str) -> str:
+        """
+        对密码进行哈希加密
+        
+        Args:
+            password: 明文密码
+            
+        Returns:
+            str: 加密后的密码哈希值
+        """
+        salt = bcrypt.gensalt()
+        hashed = bcrypt.hashpw(password.encode('utf-8'), salt)
+        return hashed.decode('utf-8')
+    
+    def verify_password(self, plain_password: str, hashed_password: str) -> bool:
+        """
+        验证密码是否正确
+        
+        Args:
+            plain_password: 明文密码
+            hashed_password: 哈希密码
+            
+        Returns:
+            bool: 密码是否匹配
+        """
+        try:
+            return bcrypt.checkpw(
+                plain_password.encode('utf-8'),
+                hashed_password.encode('utf-8')
+            )
+        except Exception as e:
+            print(f"验证密码失败: {e}")
+            return False
+    
+    def get_user_by_email(self, email: str) -> Optional[User]:
+        """
+        根据邮箱获取用户
+        
+        Args:
+            email: 邮箱地址
+            
+        Returns:
+            Optional[User]: 用户对象
+        """
+        try:
+            user_key = f"user:email:{email}"
+            user_data_str = self.redis_client.get(user_key)
+            
+            if not user_data_str:
+                return None
+            
+            user_data = json.loads(user_data_str)
+            return User(**user_data)
+            
+        except Exception as e:
+            print(f"获取用户失败: {e}")
+            return None
+    
+    def set_user_password(self, email: str, password: str) -> bool:
+        """
+        为用户设置密码
+        
+        Args:
+            email: 邮箱地址
+            password: 明文密码
+            
+        Returns:
+            bool: 是否设置成功
+        """
+        try:
+            user = self.get_user_by_email(email)
+            
+            if not user:
+                print(f"用户不存在: {email}")
+                return False
+            
+            # 加密密码
+            password_hash = self.hash_password(password)
+            
+            # 更新用户信息
+            user.password_hash = password_hash
+            user.has_password = True
+            
+            # 保存到数据库
+            return self.save_user(user)
+            
+        except Exception as e:
+            print(f"设置密码失败: {e}")
+            return False
+    
+    def verify_user_password(self, email: str, password: str) -> Optional[User]:
+        """
+        验证用户密码并返回用户对象
+        
+        Args:
+            email: 邮箱地址
+            password: 明文密码
+            
+        Returns:
+            Optional[User]: 如果密码正确返回用户对象，否则返回 None
+        """
+        try:
+            user = self.get_user_by_email(email)
+            
+            if not user:
+                print(f"用户不存在: {email}")
+                return None
+            
+            if not user.has_password or not user.password_hash:
+                print(f"用户未设置密码: {email}")
+                return None
+            
+            # 验证密码
+            if self.verify_password(password, user.password_hash):
+                # 更新最后登录时间
+                user.last_login = datetime.now()
+                self.save_user(user)
+                return user
+            else:
+                print(f"密码错误: {email}")
+                return None
+                
+        except Exception as e:
+            print(f"验证用户密码失败: {e}")
             return None
 
 

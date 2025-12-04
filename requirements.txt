@@ -37,6 +37,9 @@ Pillow>=10.0.0
 # JWT 认证（使用 PyJWT 替代 python-jose，无需编译）
 PyJWT==2.8.0
 
+# 密码加密
+bcrypt==4.1.2
+
 # 邮箱验证（EmailStr 类型需要）
 email-validator==2.3.0
 

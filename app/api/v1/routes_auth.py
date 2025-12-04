@@ -10,7 +10,10 @@ from app.schemas.auth import (
     LoginRequest,
     LoginResponse,
     UserInfo,
-    CurrentUserResponse
+    CurrentUserResponse,
+    SetPasswordRequest,
+    SetPasswordResponse,
+    PasswordLoginRequest
 )
 from app.services.auth.auth_service import get_auth_service
 from app.services.email.email_factory import get_email_service
@@ -227,6 +230,100 @@ async def get_current_user_info(current_user=Depends(get_current_user)):
             last_login=current_user.last_login.isoformat() if current_user.last_login else None
         )
     )
+
+
+@router.post("/auth/set-password", response_model=SetPasswordResponse)
+async def set_password(request: SetPasswordRequest):
+    """
+    API 4: 设置密码
+    
+    首次注册时，在验证邮箱后设置密码
+    验证码通过后才能设置密码
+    """
+    try:
+        auth_service = get_auth_service()
+        
+        # 1. 验证验证码
+        if not auth_service.verify_code(request.email, request.code):
+            raise HTTPException(
+                status_code=400,
+                detail="验证码错误或已过期"
+            )
+        
+        # 2. 获取或创建用户
+        user = auth_service.get_or_create_user(request.email)
+        
+        # 3. 设置密码
+        success = auth_service.set_user_password(request.email, request.password)
+        
+        if not success:
+            raise HTTPException(
+                status_code=500,
+                detail="设置密码失败"
+            )
+        
+        print(f"✅ 用户 {request.email} 设置密码成功")
+        
+        return SetPasswordResponse(
+            success=True,
+            message="密码设置成功！您现在可以使用邮箱+密码登录了"
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"设置密码失败: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"设置密码失败: {str(e)}"
+        )
+
+
+@router.post("/auth/login-password", response_model=LoginResponse)
+async def login_with_password(request: PasswordLoginRequest):
+    """
+    API 5: 密码登录
+    
+    使用邮箱和密码登录
+    登录成功返回 JWT 令牌
+    """
+    try:
+        auth_service = get_auth_service()
+        
+        # 验证用户密码
+        user = auth_service.verify_user_password(request.email, request.password)
+        
+        if not user:
+            raise HTTPException(
+                status_code=400,
+                detail="邮箱或密码错误"
+            )
+        
+        # 创建访问令牌
+        access_token = auth_service.create_access_token(user)
+        
+        # 返回用户信息和令牌
+        return LoginResponse(
+            access_token=access_token,
+            token_type="bearer",
+            user=UserInfo(
+                user_id=user.user_id,
+                email=user.email,
+                username=user.username,
+                avatar=user.avatar,
+                created_at=user.created_at.isoformat(),
+                last_login=user.last_login.isoformat() if user.last_login else None
+            )
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"密码登录失败: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"登录失败: {str(e)}"
+        )
 
 
 @router.post("/auth/test-email")

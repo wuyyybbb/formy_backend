@@ -19,9 +19,28 @@ class SendCodeResponse(BaseModel):
 
 
 class LoginRequest(BaseModel):
-    """登录请求"""
+    """验证码登录请求"""
     email: EmailStr = Field(..., description="邮箱地址")
     code: str = Field(..., min_length=6, max_length=6, description="6位验证码")
+
+
+class SetPasswordRequest(BaseModel):
+    """设置密码请求"""
+    email: EmailStr = Field(..., description="邮箱地址")
+    code: str = Field(..., min_length=6, max_length=6, description="6位验证码（用于验证身份）")
+    password: str = Field(..., min_length=6, max_length=50, description="密码（6-50位）")
+
+
+class SetPasswordResponse(BaseModel):
+    """设置密码响应"""
+    success: bool
+    message: str
+
+
+class PasswordLoginRequest(BaseModel):
+    """密码登录请求"""
+    email: EmailStr = Field(..., description="邮箱地址")
+    password: str = Field(..., description="密码")
 
 
 class LoginResponse(BaseModel):

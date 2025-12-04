@@ -16,6 +16,10 @@ class User(BaseModel):
     last_login: Optional[datetime] = Field(None, description="最后登录时间")
     is_active: bool = Field(default=True, description="是否激活")
     
+    # 密码（加密存储，可选）
+    password_hash: Optional[str] = Field(None, description="密码哈希值（bcrypt）")
+    has_password: bool = Field(default=False, description="是否设置了密码")
+    
     # 套餐和算力相关字段
     current_plan_id: Optional[str] = Field(None, description="当前套餐ID（starter/basic/pro/ultimate）")
     current_credits: int = Field(default=0, description="当前剩余算力")
