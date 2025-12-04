@@ -16,6 +16,24 @@ engines:
       timeout: 300  # 超时时间（5 分钟），超时后提示用户人数过多
       poll_interval: 8  # 轮询间隔（秒，增加到 8 秒以减少请求频率，避免在请求量大时频繁超时）
   
+  # RunningHub 换头工作流
+  runninghub_head_swap:
+    type: runninghub
+    config:
+      api_key: "84427127c24546879969f10983fe578a"  # RunningHub API Key（与姿势迁移相同）
+      workflow_id: "1996469641855770625"  # 换头工作流 ID
+      api_base_url: "https://www.runninghub.ai"  # API 基础 URL（国际版）
+      timeout: 300  # 超时时间（5 分钟）
+      poll_interval: 8  # 轮询间隔（秒）
+      # 节点映射配置（根据工作流节点名称配置）
+      node_mapping:
+        head_image:  # input:head_image:1 - 模特脸部特写图片
+          node_id: "1"
+          field_name: "image"
+        cloth_image:  # input:cloth_image:2 - 输入服装图片
+          node_id: "2"
+          field_name: "image"
+  
   # ========== 已废弃的引擎（不再使用） ==========
   # 人脸检测 API（已废弃）
   # face_detection_api:
@@ -70,16 +88,13 @@ engines:
 # Pipeline 配置
 # ============================================
 pipelines:
-  # 换头 Pipeline（暂时禁用）
+  # 换头 Pipeline（使用 RunningHub）
   head_swap:
-    enabled: false
+    enabled: true
     steps:
-      # face_detection:
-      #   engine: face_detection_api
-      #   description: "检测人脸"
-      # face_swap:
-      #   engine: face_swap_api
-      #   description: "替换人脸"
+      head_swap:
+        engine: runninghub_head_swap  # 使用 RunningHub 换头引擎
+        description: "RunningHub 换头工作流"
   
   # 换背景 Pipeline（暂时禁用）
   background_change:

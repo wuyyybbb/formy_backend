@@ -35,6 +35,9 @@ class RunningHubEngine(EngineBase):
         self.timeout = self.get_config("timeout", 300)  # 最大等待时间 5 分钟
         self.poll_interval = self.get_config("poll_interval", 3)
         
+        # 节点映射配置（可选，用于不同工作流的节点映射）
+        self.node_mapping = self.get_config("node_mapping", {})
+        
         if not self.api_key:
             raise ValueError("RunningHub API Key 未配置")
         if not self.workflow_id:
@@ -116,27 +119,47 @@ class RunningHubEngine(EngineBase):
         
         # 处理输入数据
         if isinstance(input_data, dict):
+            # 姿势迁移工作流参数
             raw_image = input_data.get("raw_image") or input_data.get("source_image")
             pose_image = input_data.get("pose_image") or input_data.get("reference_image")
+            # 换头工作流参数
+            head_image = input_data.get("head_image")
+            cloth_image = input_data.get("cloth_image")
         else:
             raw_image = input_data
             pose_image = None
+            head_image = None
+            cloth_image = None
         
         # 从 kwargs 获取（优先级更高）
         raw_image_path = kwargs.get("raw_image_path") or raw_image
         pose_image_path = kwargs.get("pose_image_path") or pose_image
+        head_image_path = kwargs.get("head_image_path") or head_image
+        cloth_image_path = kwargs.get("cloth_image_path") or cloth_image
         
-        # 上传原始图片
+        # 上传原始图片（姿势迁移工作流）
         if raw_image_path:
             self._log(f"正在上传原始图片: {raw_image_path}")
             uploaded_filename = self._upload_image(raw_image_path)
             params["raw_image"] = uploaded_filename
         
-        # 上传姿势参考图
+        # 上传姿势参考图（姿势迁移工作流）
         if pose_image_path:
             self._log(f"正在上传姿势参考图: {pose_image_path}")
             uploaded_filename = self._upload_image(pose_image_path)
             params["pose_image"] = uploaded_filename
+        
+        # 上传头部图片（换头工作流）
+        if head_image_path:
+            self._log(f"正在上传头部图片: {head_image_path}")
+            uploaded_filename = self._upload_image(head_image_path)
+            params["head_image"] = uploaded_filename
+        
+        # 上传服装图片（换头工作流）
+        if cloth_image_path:
+            self._log(f"正在上传服装图片: {cloth_image_path}")
+            uploaded_filename = self._upload_image(cloth_image_path)
+            params["cloth_image"] = uploaded_filename
         
         return params
     
@@ -213,33 +236,44 @@ class RunningHubEngine(EngineBase):
         提交工作流到 RunningHub（官方 API 格式）
         
         Args:
-            params: 包含 raw_image 和 pose_image 文件名的字典
-            
+            params: 包含图片文件名的字典
+                - 姿势迁移工作流: raw_image, pose_image
+                - 换头工作流: head_image, cloth_image
+        
         Returns:
             str: 任务 ID
         """
         try:
             # 构建 nodeInfoList（官方 API 格式）
-            # 根据工作流节点构建节点信息列表
-            # 节点 #3: input:raw_image:1 - 原始图片
-            # 节点 #7: input:pose_image:2 - 姿势参考图
             node_info_list = []
             
-            # 添加原始图片节点（节点 #3）
-            if "raw_image" in params:
-                node_info_list.append({
-                    "nodeId": "3",
-                    "fieldName": "image",
-                    "fieldValue": params["raw_image"]
-                })
-            
-            # 添加姿势参考图节点（节点 #7）
-            if "pose_image" in params:
-                node_info_list.append({
-                    "nodeId": "7",
-                    "fieldName": "image",
-                    "fieldValue": params["pose_image"]
-                })
+            # 如果配置了节点映射，使用配置的映射
+            if self.node_mapping:
+                # 遍历配置的节点映射
+                for param_key, node_config in self.node_mapping.items():
+                    if param_key in params:
+                        node_info_list.append({
+                            "nodeId": str(node_config.get("node_id")),
+                            "fieldName": node_config.get("field_name", "image"),
+                            "fieldValue": params[param_key]
+                        })
+            else:
+                # 默认节点映射（姿势迁移工作流）
+                # 节点 #3: input:raw_image:1 - 原始图片
+                # 节点 #7: input:pose_image:2 - 姿势参考图
+                if "raw_image" in params:
+                    node_info_list.append({
+                        "nodeId": "3",
+                        "fieldName": "image",
+                        "fieldValue": params["raw_image"]
+                    })
+                
+                if "pose_image" in params:
+                    node_info_list.append({
+                        "nodeId": "7",
+                        "fieldName": "image",
+                        "fieldValue": params["pose_image"]
+                    })
             
             # 构建请求（官方端点）
             url = f"{self.api_base_url}/task/openapi/create"

@@ -3,10 +3,14 @@
 负责 AI 换头的完整流程
 """
 from typing import Optional
+from pathlib import Path
 
 from app.services.image.pipelines.base import PipelineBase
 from app.services.image.dto import EditTaskInput, EditTaskResult, HeadSwapConfig
 from app.services.image.enums import ProcessingStep
+from app.services.image.engines.registry import get_engine_registry
+from app.services.image.image_assets import resolve_uploaded_file, copy_image_to_results
+from app.core.config import settings
 from app.core.error_codes import TaskErrorCode
 
 
@@ -16,9 +20,15 @@ class HeadSwapPipeline(PipelineBase):
     def __init__(self):
         """初始化换头 Pipeline"""
         super().__init__()
-        # TODO: 初始化需要的 Engine
-        # self.face_detection_engine = ...
-        # self.face_swap_engine = ...
+        # 获取 Engine 注册表
+        self.engine_registry = get_engine_registry()
+        # 获取换头 Engine（优先使用 RunningHub）
+        self.runninghub_engine = self.engine_registry.get_engine_for_step("head_swap", "head_swap")
+        if not self.runninghub_engine:
+            # 如果配置中没有，尝试直接获取 RunningHub Engine
+            self.runninghub_engine = self.engine_registry.get_engine("runninghub_head_swap")
+        if not self.runninghub_engine:
+            raise ValueError("换头引擎未配置，请在 engine_config.yml 中配置 runninghub_head_swap")
     
     def execute(self, task_input: EditTaskInput) -> EditTaskResult:
         """
@@ -100,164 +110,147 @@ class HeadSwapPipeline(PipelineBase):
         
         Args:
             task_id: 任务ID
-            source_image: 原始图片
+            source_image: 原始图片 file_id（模特脸部特写图片）
             config: 换头配置
             
         Returns:
             EditTaskResult: 结果
         """
-        # Step 1: 加载图片 (10%)
+        # Step 1: 解析图片路径 (10%)
         self._update_progress(10, "正在加载图片...")
-        source_img = self._load_source_image(source_image)
-        reference_img = self._load_reference_image(config.reference_image)
+        self._log_step(ProcessingStep.LOAD_IMAGE, f"加载原始图片: {source_image}")
         
-        # Step 2: 检测人脸 (30%)
-        self._update_progress(30, "正在检测人脸...")
-        source_face = self._detect_face(source_img)
-        reference_face = self._detect_face(reference_img)
+        try:
+            head_image_path = resolve_uploaded_file(source_image)
+            cloth_image_path = resolve_uploaded_file(config.reference_image)
+        except Exception as e:
+            return self._create_error_result(
+                f"加载图片失败: {e}",
+                error_code=TaskErrorCode.IMAGE_LOAD_FAILED.value
+            )
         
-        # Step 3: 提取人脸特征 (50%)
-        self._update_progress(50, "正在提取人脸特征...")
-        face_features = self._extract_face_features(reference_face)
+        # Step 2: 调用 RunningHub Engine (30%)
+        self._update_progress(30, "正在调用 AI 引擎...")
+        self._log_step(ProcessingStep.SWAP_FACE, "开始换头处理")
         
-        # Step 4: 替换人脸 (70%)
-        self._update_progress(70, "正在替换人脸...")
-        swapped_image = self._swap_face(source_img, source_face, face_features)
-        
-        # Step 5: 融合优化 (90%)
-        self._update_progress(90, "正在进行图像融合...")
-        final_image = self._blend_and_refine(swapped_image, config)
-        
-        # Step 6: 保存结果 (100%)
-        self._update_progress(100, "正在保存结果...")
-        output_path = self._save_result(task_id, final_image)
-        thumbnail_path = self._generate_thumbnail(task_id, final_image)
-        
-        return self._create_success_result(
-            output_image=output_path,
-            thumbnail=thumbnail_path,
-            metadata={
-                "width": 1024,  # TODO: 实际尺寸
-                "height": 1536,
-                "quality": config.quality.value
+        try:
+            # 准备输入数据（换头工作流使用 head_image 和 cloth_image）
+            input_data = {
+                "head_image": str(head_image_path),  # 模特脸部特写图片
+                "cloth_image": str(cloth_image_path)  # 输入服装图片
             }
-        )
-    
-    def _load_source_image(self, image_path: str):
-        """
-        加载原始图片
-        
-        Args:
-            image_path: 图片路径
             
-        Returns:
-            图像数据
-        """
-        # TODO: 调用 ImageIO 工具加载图片
-        self._log_step(ProcessingStep.LOAD_IMAGE, f"加载原始图片: {image_path}")
-        pass
-    
-    def _load_reference_image(self, image_path: str):
-        """
-        加载参考图片
-        
-        Args:
-            image_path: 图片路径
+            # 执行工作流
+            result = self.runninghub_engine.execute(input_data)
             
-        Returns:
-            图像数据
-        """
-        # TODO: 调用 ImageIO 工具加载图片
-        self._log_step(ProcessingStep.LOAD_IMAGE, f"加载参考图片: {image_path}")
-        pass
-    
-    def _detect_face(self, image):
-        """
-        检测人脸
-        
-        Args:
-            image: 图像数据
+        except Exception as e:
+            self._log_step(ProcessingStep.COMPLETE, f"AI 引擎执行失败: {e}")
+            # 根据异常类型选择错误码
+            error_msg = str(e).lower()
+            if "timeout" in error_msg:
+                error_code = TaskErrorCode.COMFYUI_CONNECTION_TIMEOUT
+            elif "connection" in error_msg:
+                error_code = TaskErrorCode.COMFYUI_NOT_AVAILABLE
+            else:
+                error_code = TaskErrorCode.COMFYUI_PROCESSING_FAILED
             
-        Returns:
-            人脸检测结果
-        """
-        # TODO: 调用 FaceDetectionEngine
-        self._log_step(ProcessingStep.DETECT_FACE, "检测人脸区域")
-        pass
-    
-    def _extract_face_features(self, face):
-        """
-        提取人脸特征
+            return self._create_error_result(
+                f"换头处理失败: {e}",
+                error_code=error_code.value
+            )
         
-        Args:
-            face: 人脸数据
-            
-        Returns:
-            人脸特征
-        """
-        # TODO: 调用 FaceFeatureEngine
-        self._log_step(ProcessingStep.EXTRACT_FACE, "提取人脸特征")
-        pass
-    
-    def _swap_face(self, source_image, source_face, target_features):
-        """
-        替换人脸
+        # Step 3: 下载并保存结果图片 (80%)
+        self._update_progress(80, "正在保存结果...")
+        self._log_step(ProcessingStep.COMPLETE, "保存结果图片")
         
-        Args:
-            source_image: 原始图像
-            source_face: 原始人脸
-            target_features: 目标特征
+        try:
+            # 下载输出图片
+            output_image_info = result.get("output_image")
+            comparison_image_info = result.get("comparison_image")
             
-        Returns:
-            替换后的图像
-        """
-        # TODO: 调用 FaceSwapEngine
-        self._log_step(ProcessingStep.SWAP_FACE, "替换人脸")
-        pass
+            if not output_image_info:
+                return self._create_error_result(
+                    "未获取到输出图片",
+                    error_code=TaskErrorCode.COMFYUI_RESULT_NOT_FOUND.value
+                )
+            
+            # 下载输出图片
+            output_url = output_image_info.get("url")
+            if not output_url:
+                return self._create_error_result(
+                    "输出图片 URL 为空",
+                    error_code=TaskErrorCode.COMFYUI_RESULT_NOT_FOUND.value
+                )
+            
+            # 下载图片到本地
+            import requests
+            import io
+            from app.utils.image_io import save_image, create_thumbnail
+            from PIL import Image
+            
+            response = requests.get(output_url, timeout=60)
+            response.raise_for_status()
+            
+            # 保存输出图片
+            output_filename = f"{task_id}_output.jpg"
+            output_path = Path(settings.RESULT_DIR) / output_filename
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            # 从响应中读取图片并保存
+            output_img = Image.open(io.BytesIO(response.content))
+            save_image(output_img, str(output_path), format="JPEG", quality=95)
+            
+            # 下载对比图片（如果有）
+            comparison_path = None
+            comparison_filename = None
+            if comparison_image_info:
+                self._log_step(ProcessingStep.COMPLETE, f"找到对比图信息: {comparison_image_info}")
+                comparison_url = comparison_image_info.get("url")
+                if comparison_url:
+                    try:
+                        self._log_step(ProcessingStep.COMPLETE, f"开始下载对比图: {comparison_url}")
+                        comp_response = requests.get(comparison_url, timeout=60)
+                        comp_response.raise_for_status()
+                        comparison_filename = f"{task_id}_comparison.jpg"
+                        comparison_path = Path(settings.RESULT_DIR) / comparison_filename
+                        comp_img = Image.open(io.BytesIO(comp_response.content))
+                        save_image(comp_img, str(comparison_path), format="JPEG", quality=95)
+                        self._log_step(ProcessingStep.COMPLETE, f"对比图已保存: /results/{comparison_filename}")
+                    except Exception as e:
+                        self._log_step(ProcessingStep.COMPLETE, f"下载对比图片失败: {e}")
+            else:
+                self._log_step(ProcessingStep.COMPLETE, "未找到对比图信息")
+            
+            # 生成缩略图
+            thumbnail_path = None
+            try:
+                thumbnail = create_thumbnail(output_img, (256, 256))
+                thumbnail_filename = f"{task_id}_thumb.jpg"
+                thumbnail_path_obj = Path(settings.RESULT_DIR) / thumbnail_filename
+                save_image(thumbnail, str(thumbnail_path_obj), format="JPEG", quality=85)
+                thumbnail_path = f"/results/{thumbnail_filename}"
+            except Exception as e:
+                self._log_step(ProcessingStep.COMPLETE, f"生成缩略图失败: {e}")
+            
+            # Step 4: 完成 (100%)
+            self._update_progress(100, "处理完成")
+            
+            return self._create_success_result(
+                output_image=f"/results/{output_filename}",
+                thumbnail=thumbnail_path,
+                comparison_image=f"/results/{comparison_filename}" if comparison_filename else None,
+                metadata={
+                    "width": output_img.width,
+                    "height": output_img.height,
+                    "quality": config.quality.value
+                }
+            )
+            
+        except Exception as e:
+            self._log_step(ProcessingStep.COMPLETE, f"保存结果失败: {e}")
+            return self._create_error_result(
+                f"保存结果失败: {e}",
+                error_code=TaskErrorCode.COMFYUI_RESULT_NOT_FOUND.value
+            )
     
-    def _blend_and_refine(self, image, config: HeadSwapConfig):
-        """
-        融合和优化
-        
-        Args:
-            image: 图像数据
-            config: 配置
-            
-        Returns:
-            优化后的图像
-        """
-        # TODO: 调用 BlendEngine
-        self._log_step(ProcessingStep.BLEND_FACE, "融合优化图像")
-        pass
-    
-    def _save_result(self, task_id: str, image) -> str:
-        """
-        保存结果图片
-        
-        Args:
-            task_id: 任务ID
-            image: 图像数据
-            
-        Returns:
-            str: 保存路径
-        """
-        # TODO: 调用 Storage 服务保存图片
-        output_path = f"/results/{task_id}_output.jpg"
-        self._log_step(ProcessingStep.COMPLETE, f"保存结果: {output_path}")
-        return output_path
-    
-    def _generate_thumbnail(self, task_id: str, image) -> str:
-        """
-        生成缩略图
-        
-        Args:
-            task_id: 任务ID
-            image: 图像数据
-            
-        Returns:
-            str: 缩略图路径
-        """
-        # TODO: 生成缩略图
-        thumbnail_path = f"/results/{task_id}_thumb.jpg"
-        return thumbnail_path
 
