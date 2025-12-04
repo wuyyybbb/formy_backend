@@ -154,17 +154,24 @@ class AuthService:
                 user.last_login = datetime.now()
             else:
                 # 创建新用户，分配免费算力
+                # 检查是否在白名单中
+                is_whitelist = settings.is_whitelisted(email)
+                initial_credits = settings.WHITELIST_CREDITS if is_whitelist else 100
+                
                 user = User(
                     user_id=generate_user_id(),
                     email=email,
                     username=email.split('@')[0],
                     created_at=datetime.now(),
                     last_login=datetime.now(),
-                    # 新用户默认赠送 100 免费算力（约 2-3 次换姿势）
+                    # 白名单用户获得特殊算力，普通用户默认 100 算力
                     current_plan_id=None,  # 免费用户没有套餐
-                    current_credits=100,  # 赠送 100 算力
+                    current_credits=initial_credits,  # 白名单: 100000, 普通: 100
                     plan_renew_at=None
                 )
+                
+                if is_whitelist:
+                    print(f"🌟 白名单用户注册: {email}, 初始算力: {initial_credits}")
             
             # 保存用户信息
             self.save_user(user)

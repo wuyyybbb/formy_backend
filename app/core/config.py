@@ -155,6 +155,39 @@ class Settings(BaseSettings):
     FROM_EMAIL: str = "wuyebei3206@gmail.com"  # Gmail 发件邮箱
     FROM_NAME: str = "Formy"
     
+    # ==================== 白名单配置 ====================
+    # 白名单用户邮箱列表（逗号分隔），这些用户将获得特殊算力
+    WHITELIST_EMAILS: str = "wyb3206@163.com,wuyebei3206@gmail.com"
+    # 白名单用户的算力额度
+    WHITELIST_CREDITS: int = 100000
+    # 管理员密码（用于管理白名单）
+    ADMIN_PASSWORD: str = "wyb518"
+    
+    @property
+    def get_whitelist_emails(self) -> set:
+        """
+        获取白名单邮箱列表
+        
+        Returns:
+            set: 白名单邮箱集合（小写）
+        """
+        if not self.WHITELIST_EMAILS:
+            return set()
+        emails = [email.strip().lower() for email in self.WHITELIST_EMAILS.split(",") if email.strip()]
+        return set(emails)
+    
+    def is_whitelisted(self, email: str) -> bool:
+        """
+        检查邮箱是否在白名单中
+        
+        Args:
+            email: 邮箱地址
+            
+        Returns:
+            bool: 是否在白名单中
+        """
+        return email.lower() in self.get_whitelist_emails
+    
     # ==================== 日志配置 ====================
     LOG_LEVEL: str = "INFO"  # DEBUG / INFO / WARNING / ERROR
     LOG_FORMAT: str = "json"  # json / text

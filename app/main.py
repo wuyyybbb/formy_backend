@@ -7,7 +7,7 @@ from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 
 from app.core.config import settings
-from app.api.v1 import routes_upload, routes_tasks, routes_auth, routes_plans, routes_billing
+from app.api.v1 import routes_upload, routes_tasks, routes_auth, routes_plans, routes_billing, routes_admin
 
 # 创建 FastAPI 应用
 app = FastAPI(
@@ -47,6 +47,7 @@ app.include_router(routes_tasks.router, prefix=settings.API_V1_PREFIX, tags=["ta
 app.include_router(routes_auth.router, prefix=settings.API_V1_PREFIX, tags=["auth"])
 app.include_router(routes_plans.router, prefix=settings.API_V1_PREFIX, tags=["plans"])
 app.include_router(routes_billing.router, prefix=settings.API_V1_PREFIX, tags=["billing"])
+app.include_router(routes_admin.router, prefix=settings.API_V1_PREFIX, tags=["admin"])
 
 
 @app.get("/")
