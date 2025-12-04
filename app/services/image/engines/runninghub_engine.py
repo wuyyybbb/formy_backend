@@ -408,22 +408,34 @@ class RunningHubEngine(EngineBase):
             }
             
             # 查询状态（添加重试）
-            max_retries = 3
+            # 虽然官方建议其他接口 5 秒即可，但在请求量大时查询接口也可能较慢
+            max_retries = 5  # 增加重试次数
+            connect_timeout = 10  # 连接超时
+            read_timeout = 30  # 读取超时（给予更多时间）
+            
             for attempt in range(max_retries):
                 try:
-                    # 查询接口：连接超时 5 秒，读取超时 10 秒（官方建议其他接口 5 秒即可）
-                    response = requests.post(url, headers=headers, json=payload, timeout=(5, 10))
+                    response = requests.post(
+                        url, 
+                        headers=headers, 
+                        json=payload, 
+                        timeout=(connect_timeout, read_timeout)
+                    )
                     response.raise_for_status()
                     return response.json()
-                except requests.exceptions.Timeout:
+                except requests.exceptions.Timeout as e:
                     if attempt < max_retries - 1:
-                        self._log(f"查询超时，重试...", "WARNING")
-                        time.sleep(2)
+                        retry_delay = 5  # 增加重试间隔
+                        self._log(f"查询任务状态超时（可能是 RunningHub 请求量大），{retry_delay}秒后重试 ({attempt + 1}/{max_retries})...", "WARNING")
+                        time.sleep(retry_delay)
                     else:
-                        raise
-                except Exception:
+                        self._log(f"查询任务状态超时，已重试 {max_retries} 次", "ERROR")
+                        raise Exception(f"查询任务状态超时（已重试{max_retries}次）: {e}")
+                except requests.exceptions.RequestException as e:
                     if attempt < max_retries - 1:
-                        time.sleep(2)
+                        retry_delay = 5
+                        self._log(f"查询请求失败: {e}，{retry_delay}秒后重试...", "WARNING")
+                        time.sleep(retry_delay)
                     else:
                         raise
             
