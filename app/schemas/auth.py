@@ -25,9 +25,7 @@ class LoginRequest(BaseModel):
 
 
 class SetPasswordRequest(BaseModel):
-    """设置密码请求"""
-    email: EmailStr = Field(..., description="邮箱地址")
-    code: str = Field(..., min_length=6, max_length=6, description="6位验证码（用于验证身份）")
+    """设置密码请求（需要登录，使用 token 认证）"""
     password: str = Field(..., min_length=6, max_length=50, description="密码（6-50位）")
 
 

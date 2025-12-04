@@ -233,28 +233,22 @@ async def get_current_user_info(current_user=Depends(get_current_user)):
 
 
 @router.post("/auth/set-password", response_model=SetPasswordResponse)
-async def set_password(request: SetPasswordRequest):
+async def set_password(
+    request: SetPasswordRequest,
+    current_user=Depends(get_current_user)
+):
     """
-    API 4: 设置密码
+    API 4: 设置密码（需要登录）
     
-    首次注册时，在验证邮箱后设置密码
-    验证码通过后才能设置密码
+    用户登录后设置密码，使用 token 认证而不是验证码
+    这样避免了验证码重复使用的问题
     """
     try:
         auth_service = get_auth_service()
         
-        # 1. 验证验证码
-        if not auth_service.verify_code(request.email, request.code):
-            raise HTTPException(
-                status_code=400,
-                detail="验证码错误或已过期"
-            )
-        
-        # 2. 获取或创建用户
-        user = auth_service.get_or_create_user(request.email)
-        
-        # 3. 设置密码
-        success = auth_service.set_user_password(request.email, request.password)
+        # 1. 用户已经通过 token 认证，直接设置密码
+        # 2. 设置密码
+        success = auth_service.set_user_password(current_user.email, request.password)
         
         if not success:
             raise HTTPException(
@@ -262,7 +256,7 @@ async def set_password(request: SetPasswordRequest):
                 detail="设置密码失败"
             )
         
-        print(f"✅ 用户 {request.email} 设置密码成功")
+        print(f"✅ 用户 {current_user.email} 设置密码成功")
         
         return SetPasswordResponse(
             success=True,
