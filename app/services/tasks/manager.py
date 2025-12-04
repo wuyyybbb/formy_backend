@@ -125,7 +125,8 @@ class TaskService:
             task_data = self.queue.get_task_data(task_id)
             if task_data:
                 # 检查任务是否属于当前用户
-                input_data = task_data.get("input", {})
+                # 注意：任务数据保存在 "data" 字段中，不是 "input"
+                input_data = task_data.get("data", {})
                 if isinstance(input_data, str):
                     import json
                     input_data = json.loads(input_data)

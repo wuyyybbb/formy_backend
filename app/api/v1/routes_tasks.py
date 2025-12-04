@@ -162,7 +162,8 @@ async def get_task(
     # 从任务数据中获取 user_id
     task_data = task_service.queue.get_task_data(task_id)
     if task_data:
-        input_data = task_data.get("input", {})
+        # 注意：任务数据保存在 "data" 字段中，不是 "input"
+        input_data = task_data.get("data", {})
         if isinstance(input_data, str):
             import json
             input_data = json.loads(input_data)
@@ -274,7 +275,8 @@ async def cancel_task(
                 detail=f"任务不存在: {task_id}"
             )
         
-        input_data = task_data.get("input", {})
+        # 注意：任务数据保存在 "data" 字段中，不是 "input"
+        input_data = task_data.get("data", {})
         if isinstance(input_data, str):
             import json
             input_data = json.loads(input_data)
