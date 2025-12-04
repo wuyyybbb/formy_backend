@@ -131,6 +131,13 @@ class TaskService:
                     input_data = json.loads(input_data)
                 
                 task_user_id = input_data.get("user_id")
+                
+                # 如果任务没有 user_id（旧任务），跳过（无法确定归属）
+                if task_user_id is None:
+                    # 旧任务，跳过（安全考虑：不显示无法确定归属的任务）
+                    continue
+                
+                # 如果任务有 user_id，检查是否属于当前用户
                 if task_user_id != user_id:
                     # 跳过不属于当前用户的任务
                     continue

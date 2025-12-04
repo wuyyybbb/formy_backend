@@ -168,11 +168,22 @@ async def get_task(
             input_data = json.loads(input_data)
         
         task_user_id = input_data.get("user_id")
-        if task_user_id != current_user_id:
-            raise HTTPException(
-                status_code=403,
-                detail="无权访问该任务"
-            )
+        
+        # 如果任务有 user_id，检查权限
+        if task_user_id is not None:
+            if task_user_id != current_user_id:
+                print(f"⚠️  权限检查失败: 任务 {task_id} 属于用户 {task_user_id}, 当前用户 {current_user_id}")
+                raise HTTPException(
+                    status_code=403,
+                    detail="无权访问该任务"
+                )
+        else:
+            # 旧任务没有 user_id，向后兼容：允许访问
+            print(f"ℹ️  旧任务（无 user_id）: {task_id}, 允许访问（向后兼容）")
+    else:
+        # task_data 不存在，但 task_info 存在，可能是旧数据格式
+        # 为了安全，仍然允许访问（向后兼容）
+        print(f"ℹ️  任务数据不存在: {task_id}, 但任务信息存在，允许访问（向后兼容）")
     
     return task_info
 
@@ -269,11 +280,18 @@ async def cancel_task(
             input_data = json.loads(input_data)
         
         task_user_id = input_data.get("user_id")
-        if task_user_id != current_user_id:
-            raise HTTPException(
-                status_code=403,
-                detail="无权取消该任务"
-            )
+        
+        # 如果任务有 user_id，检查权限
+        if task_user_id is not None:
+            if task_user_id != current_user_id:
+                print(f"⚠️  取消任务权限检查失败: 任务 {task_id} 属于用户 {task_user_id}, 当前用户 {current_user_id}")
+                raise HTTPException(
+                    status_code=403,
+                    detail="无权取消该任务"
+                )
+        else:
+            # 旧任务没有 user_id，向后兼容：允许取消
+            print(f"ℹ️  取消旧任务（无 user_id）: {task_id}, 允许取消（向后兼容）")
         
         success = task_service.cancel_task(task_id)
         
