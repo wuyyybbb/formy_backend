@@ -460,9 +460,39 @@ class RunningHubEngine(EngineBase):
             if not data or not isinstance(data, list) or len(data) == 0:
                 raise Exception(f"未找到输出数据，响应: {status_info}")
             
-            # 获取第一个输出文件（主要结果图）
-            first_output = data[0]
-            output_image_url = first_output.get("fileUrl")
+            self._log(f"收到 {len(data)} 个输出文件")
+            for idx, output in enumerate(data):
+                self._log(f"输出 {idx}: fileUrl={output.get('fileUrl', 'N/A')[:50]}..., fileType={output.get('fileType')}, nodeId={output.get('nodeId')}")
+            
+            # 查找主输出图片（output:image:1）和对比图（output:image_comparer:2）
+            output_image_url = None
+            comparison_url = None
+            
+            for output in data:
+                node_id = str(output.get("nodeId", ""))
+                file_url = output.get("fileUrl")
+                
+                if not file_url:
+                    continue
+                
+                # 根据 nodeId 判断输出类型
+                # nodeId "10" 对应 output:image:1（主输出）
+                # nodeId "11" 或其他包含 "comparer" 的 对应 output:image_comparer:2（对比图）
+                if node_id == "10" or "image:1" in node_id:
+                    output_image_url = file_url
+                    self._log(f"找到主输出图片 (nodeId={node_id}): {file_url[:50]}...")
+                elif node_id == "11" or "comparer" in node_id or "image_comparer" in node_id:
+                    comparison_url = file_url
+                    self._log(f"找到对比图 (nodeId={node_id}): {file_url[:50]}...")
+            
+            # 如果没有通过 nodeId 找到，使用默认逻辑：第一个是主输出，第二个是对比图
+            if not output_image_url and len(data) > 0:
+                output_image_url = data[0].get("fileUrl")
+                self._log(f"使用默认逻辑：第一个输出作为主图")
+            
+            if not comparison_url and len(data) > 1:
+                comparison_url = data[1].get("fileUrl")
+                self._log(f"使用默认逻辑：第二个输出作为对比图")
             
             if not output_image_url:
                 raise Exception(f"未找到输出图片 URL，响应: {status_info}")
@@ -470,24 +500,23 @@ class RunningHubEngine(EngineBase):
             result = {
                 "output_image": {
                     "url": output_image_url,
-                    "type": first_output.get("fileType", "output")
+                    "type": "output"
                 },
                 "raw_outputs": data,
                 "task_info": status_info
             }
             
-            # 如果有第二个输出文件（对比图），也添加到结果中
-            if len(data) > 1:
-                comparison_output = data[1]
-                comparison_url = comparison_output.get("fileUrl")
-                if comparison_url:
-                    result["comparison_image"] = {
-                        "url": comparison_url,
-                        "type": comparison_output.get("fileType", "comparison")
-                    }
-                    self._log(f"找到对比图: {comparison_url}")
+            # 添加对比图（如果有）
+            if comparison_url:
+                result["comparison_image"] = {
+                    "url": comparison_url,
+                    "type": "comparison"
+                }
+                self._log(f"✅ 对比图已添加到结果中")
+            else:
+                self._log(f"⚠️  未找到对比图")
             
-            self._log(f"任务结果解析成功，输出图片: {output_image_url}")
+            self._log(f"任务结果解析成功，输出图片: {output_image_url[:50]}...")
             
             return result
             
