@@ -94,6 +94,7 @@ class TaskService:
     
     def get_task_list(
         self, 
+        user_id: Optional[str] = None,
         status_filter: Optional[str] = None,
         mode_filter: Optional[str] = None,
         page: int = 1,
@@ -103,6 +104,7 @@ class TaskService:
         获取任务列表
         
         Args:
+            user_id: 用户ID（必需，用于过滤任务）
             status_filter: 状态筛选
             mode_filter: 模式筛选
             page: 页码
@@ -111,6 +113,9 @@ class TaskService:
         Returns:
             List[TaskSummary]: 任务摘要列表
         """
+        if not user_id:
+            raise ValueError("user_id 是必需的，用于过滤任务")
+        
         # 获取所有任务ID（可按状态筛选）
         task_ids = self.queue.get_all_task_ids(status_filter=status_filter)
         
@@ -119,6 +124,17 @@ class TaskService:
         for task_id in task_ids:
             task_data = self.queue.get_task_data(task_id)
             if task_data:
+                # 检查任务是否属于当前用户
+                input_data = task_data.get("input", {})
+                if isinstance(input_data, str):
+                    import json
+                    input_data = json.loads(input_data)
+                
+                task_user_id = input_data.get("user_id")
+                if task_user_id != user_id:
+                    # 跳过不属于当前用户的任务
+                    continue
+                
                 task_info = self._parse_task_info(task_data)
                 
                 # 模式筛选

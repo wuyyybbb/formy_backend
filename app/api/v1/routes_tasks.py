@@ -131,15 +131,23 @@ async def create_task(
 
 
 @router.get("/tasks/{task_id}", response_model=TaskInfo)
-async def get_task(task_id: str):
+async def get_task(
+    task_id: str,
+    current_user_id: str = Depends(get_current_user_id)
+):
     """
-    获取任务详情
+    获取任务详情（需要登录，只能访问自己的任务）
     
     Args:
         task_id: 任务ID
+        current_user_id: 当前用户ID（从 token 获取）
         
     Returns:
         TaskInfo: 任务信息
+        
+    Raises:
+        404: 任务不存在
+        403: 无权访问该任务（不属于当前用户）
     """
     task_service = get_task_service()
     task_info = task_service.get_task(task_id)
@@ -150,6 +158,22 @@ async def get_task(task_id: str):
             detail=f"任务不存在: {task_id}"
         )
     
+    # 检查任务是否属于当前用户
+    # 从任务数据中获取 user_id
+    task_data = task_service.queue.get_task_data(task_id)
+    if task_data:
+        input_data = task_data.get("input", {})
+        if isinstance(input_data, str):
+            import json
+            input_data = json.loads(input_data)
+        
+        task_user_id = input_data.get("user_id")
+        if task_user_id != current_user_id:
+            raise HTTPException(
+                status_code=403,
+                detail="无权访问该任务"
+            )
+    
     return task_info
 
 
@@ -158,23 +182,26 @@ async def list_tasks(
     status: Optional[str] = Query(None, description="状态筛选"),
     mode: Optional[str] = Query(None, description="模式筛选"),
     page: int = Query(1, ge=1, description="页码"),
-    page_size: int = Query(20, ge=1, le=100, description="每页数量")
+    page_size: int = Query(20, ge=1, le=100, description="每页数量"),
+    current_user_id: str = Depends(get_current_user_id)
 ):
     """
-    获取任务列表
+    获取任务列表（需要登录，只返回当前用户的任务）
     
     Args:
         status: 状态筛选
         mode: 模式筛选
         page: 页码
         page_size: 每页数量
+        current_user_id: 当前用户ID（从 token 获取）
         
     Returns:
-        TaskListResponse: 任务列表
+        TaskListResponse: 任务列表（仅当前用户的任务）
     """
     try:
         task_service = get_task_service()
         tasks = task_service.get_task_list(
+            user_id=current_user_id,  # 只返回当前用户的任务
             status_filter=status,
             mode_filter=mode,
             page=page,
@@ -207,24 +234,53 @@ async def list_tasks(
 
 
 @router.post("/tasks/{task_id}/cancel")
-async def cancel_task(task_id: str):
+async def cancel_task(
+    task_id: str,
+    current_user_id: str = Depends(get_current_user_id)
+):
     """
-    取消任务
+    取消任务（需要登录，只能取消自己的任务）
     
     Args:
         task_id: 任务ID
+        current_user_id: 当前用户ID（从 token 获取）
         
     Returns:
         dict: 操作结果
+        
+    Raises:
+        404: 任务不存在
+        403: 无权取消该任务（不属于当前用户）
     """
     try:
         task_service = get_task_service()
+        
+        # 检查任务是否属于当前用户
+        task_data = task_service.queue.get_task_data(task_id)
+        if not task_data:
+            raise HTTPException(
+                status_code=404,
+                detail=f"任务不存在: {task_id}"
+            )
+        
+        input_data = task_data.get("input", {})
+        if isinstance(input_data, str):
+            import json
+            input_data = json.loads(input_data)
+        
+        task_user_id = input_data.get("user_id")
+        if task_user_id != current_user_id:
+            raise HTTPException(
+                status_code=403,
+                detail="无权取消该任务"
+            )
+        
         success = task_service.cancel_task(task_id)
         
         if not success:
             raise HTTPException(
-                status_code=404,
-                detail=f"任务不存在或无法取消: {task_id}"
+                status_code=400,
+                detail=f"任务无法取消: {task_id}"
             )
         
         return {
