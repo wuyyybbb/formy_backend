@@ -67,18 +67,67 @@ class TaskQueue:
         Returns:
             Optional[str]: 任务ID，如果超时返回 None
         """
-        try:
-            # 从左侧弹出（FIFO）
-            result = self.redis_client.blpop(self.QUEUE_KEY, timeout=timeout)
-            if result:
-                _, task_id = result
-                # 标记为处理中
-                self.redis_client.sadd(self.PROCESSING_SET, task_id)
-                return task_id
-            return None
-        except Exception as e:
-            print(f"弹出任务失败: {e}")
-            return None
+        max_retries = 3
+        retry_delay = 1  # 重试间隔（秒）
+        
+        for attempt in range(max_retries):
+            try:
+                # 从左侧弹出（FIFO）
+                result = self.redis_client.blpop(self.QUEUE_KEY, timeout=timeout)
+                if result:
+                    _, task_id = result
+                    # 标记为处理中
+                    self.redis_client.sadd(self.PROCESSING_SET, task_id)
+                    return task_id
+                return None
+            except redis.TimeoutError as e:
+                # Redis 操作超时（不是 socket 超时）
+                if attempt < max_retries - 1:
+                    print(f"⚠️  Redis 操作超时，{retry_delay}秒后重试 ({attempt + 1}/{max_retries})...")
+                    import time
+                    time.sleep(retry_delay)
+                    continue
+                else:
+                    print(f"❌ Redis 操作超时（已重试 {max_retries} 次）: {e}")
+                    return None
+            except redis.ConnectionError as e:
+                # Redis 连接错误
+                if attempt < max_retries - 1:
+                    print(f"⚠️  Redis 连接错误，{retry_delay}秒后重试 ({attempt + 1}/{max_retries})...")
+                    import time
+                    time.sleep(retry_delay)
+                    # 尝试重新连接
+                    try:
+                        self.redis_client.ping()
+                    except:
+                        pass
+                    continue
+                else:
+                    print(f"❌ Redis 连接错误（已重试 {max_retries} 次）: {e}")
+                    return None
+            except Exception as e:
+                # 其他错误（包括 socket timeout）
+                error_msg = str(e)
+                if "Timeout reading from socket" in error_msg or "timeout" in error_msg.lower():
+                    if attempt < max_retries - 1:
+                        print(f"⚠️  Socket 超时，{retry_delay}秒后重试 ({attempt + 1}/{max_retries})...")
+                        import time
+                        time.sleep(retry_delay)
+                        # 尝试重新连接
+                        try:
+                            self.redis_client.ping()
+                        except:
+                            pass
+                        continue
+                    else:
+                        print(f"❌ Socket 超时（已重试 {max_retries} 次）: {e}")
+                        return None
+                else:
+                    # 其他未知错误，直接抛出
+                    print(f"❌ 弹出任务失败: {e}")
+                    return None
+        
+        return None
     
     def get_task_data(self, task_id: str) -> Optional[Dict[str, Any]]:
         """

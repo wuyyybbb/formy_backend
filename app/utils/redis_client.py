@@ -32,11 +32,16 @@ def get_redis_client() -> redis.Redis:
     
     try:
         # 使用 REDIS_URL 创建连接
+        # socket_timeout 需要大于 blpop 的 timeout，避免阻塞操作时 socket 超时
         redis_client = redis.from_url(
             redis_url,
             decode_responses=True,
-            socket_connect_timeout=5,
-            socket_timeout=5
+            socket_connect_timeout=10,  # 连接超时 10 秒
+            socket_timeout=30,  # socket 读写超时 30 秒（需要大于 blpop timeout）
+            socket_keepalive=True,  # 保持连接活跃
+            socket_keepalive_options={},  # TCP keepalive 选项
+            retry_on_timeout=True,  # 超时后重试
+            health_check_interval=30  # 健康检查间隔
         )
         
         # 测试连接
