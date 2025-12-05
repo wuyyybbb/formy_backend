@@ -152,6 +152,13 @@ class AuthService:
                 user = User(**user_data)
                 # 更新最后登录时间
                 user.last_login = datetime.now()
+                
+                # 检查白名单：如果用户在白名单中，确保算力至少是 100000
+                is_whitelist = settings.is_whitelisted(email)
+                if is_whitelist and user.current_credits < settings.WHITELIST_CREDITS:
+                    old_credits = user.current_credits
+                    user.current_credits = settings.WHITELIST_CREDITS
+                    print(f"🌟 白名单用户登录: {email}, 算力已从 {old_credits} 补充到 {user.current_credits}")
             else:
                 # 创建新用户，分配免费算力
                 # 检查是否在白名单中

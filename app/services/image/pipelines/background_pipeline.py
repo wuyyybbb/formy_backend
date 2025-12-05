@@ -3,10 +3,14 @@
 负责 AI 换背景的完整流程
 """
 from typing import Optional
+from pathlib import Path
 
 from app.services.image.pipelines.base import PipelineBase
 from app.services.image.dto import EditTaskInput, EditTaskResult, BackgroundChangeConfig
 from app.services.image.enums import ProcessingStep
+from app.services.image.engines.registry import get_engine_registry
+from app.services.image.image_assets import resolve_uploaded_file, copy_image_to_results
+from app.core.config import settings
 from app.core.error_codes import TaskErrorCode
 
 
@@ -16,9 +20,15 @@ class BackgroundPipeline(PipelineBase):
     def __init__(self):
         """初始化换背景 Pipeline"""
         super().__init__()
-        # TODO: 初始化需要的 Engine
-        # self.segmentation_engine = ...
-        # self.background_engine = ...
+        # 获取 Engine 注册表
+        self.engine_registry = get_engine_registry()
+        # 获取换背景 Engine（优先使用 RunningHub）
+        self.runninghub_engine = self.engine_registry.get_engine_for_step("background_change", "background_change")
+        if not self.runninghub_engine:
+            # 如果配置中没有，尝试直接获取 RunningHub Engine
+            self.runninghub_engine = self.engine_registry.get_engine("runninghub_background_change")
+        if not self.runninghub_engine:
+            raise ValueError("换背景引擎未配置，请在 engine_config.yml 中配置 runninghub_background_change")
     
     def execute(self, task_input: EditTaskInput) -> EditTaskResult:
         """
@@ -70,10 +80,38 @@ class BackgroundPipeline(PipelineBase):
         Returns:
             bool: 是否有效
         """
-        # TODO: 实现验证逻辑
-        # - 检查源图片是否存在
-        # - 检查背景配置是否有效
-        # - 如果是自定义背景，检查背景图是否存在
+        # 检查源图片是否存在
+        try:
+            source_path = resolve_uploaded_file(task_input.source_image)
+            if not source_path.exists():
+                self._log_step(ProcessingStep.LOAD_IMAGE, f"源图片不存在: {task_input.source_image}")
+                return False
+        except Exception as e:
+            self._log_step(ProcessingStep.LOAD_IMAGE, f"无法解析源图片: {e}")
+            return False
+        
+        # 检查配置中是否有背景图
+        config = task_input.config or {}
+        bg_image_id = config.get("bg_image") or config.get("background_image")
+        if not bg_image_id:
+            self._log_step(ProcessingStep.LOAD_IMAGE, "缺少背景图片")
+            return False
+        
+        # 检查背景图是否存在
+        try:
+            bg_path = resolve_uploaded_file(bg_image_id)
+            if not bg_path.exists():
+                self._log_step(ProcessingStep.LOAD_IMAGE, f"背景图片不存在: {bg_image_id}")
+                return False
+        except Exception as e:
+            self._log_step(ProcessingStep.LOAD_IMAGE, f"无法解析背景图片: {e}")
+            return False
+        
+        # 检查 Engine 是否可用
+        if not self.runninghub_engine:
+            self._log_step(ProcessingStep.COMPLETE, "换背景 Engine 未配置（需要 RunningHub）")
+            return False
+        
         return True
     
     def _parse_config(self, config: dict) -> BackgroundChangeConfig:
@@ -86,8 +124,13 @@ class BackgroundPipeline(PipelineBase):
         Returns:
             BackgroundChangeConfig: 配置对象
         """
-        # TODO: 实现配置解析
-        return BackgroundChangeConfig(**config)
+        # 从配置中提取背景图
+        bg_image_id = config.get("bg_image") or config.get("background_image")
+        
+        return BackgroundChangeConfig(
+            background_image=bg_image_id,
+            background_type=config.get("background_type", "custom")
+        )
     
     def _run_background_change_workflow(
         self,
@@ -100,211 +143,147 @@ class BackgroundPipeline(PipelineBase):
         
         Args:
             task_id: 任务ID
-            source_image: 原始图片
+            source_image: 原始图片 file_id（模特图片）
             config: 换背景配置
             
         Returns:
             EditTaskResult: 结果
         """
-        # Step 1: 加载图片 (10%)
+        # Step 1: 解析图片路径 (10%)
         self._update_progress(10, "正在加载图片...")
-        source_img = self._load_source_image(source_image)
+        self._log_step(ProcessingStep.LOAD_IMAGE, f"加载原始图片: {source_image}")
         
-        # Step 2: 人像分割 (30%)
-        self._update_progress(30, "正在进行人像分割...")
-        person_mask = self._segment_person(source_img)
+        try:
+            model_image_path = resolve_uploaded_file(source_image)
+            bg_image_path = resolve_uploaded_file(config.background_image)
+        except Exception as e:
+            return self._create_error_result(
+                f"加载图片失败: {e}",
+                error_code=TaskErrorCode.IMAGE_LOAD_FAILED.value
+            )
         
-        # Step 3: 移除背景 (50%)
-        self._update_progress(50, "正在移除背景...")
-        person_no_bg = self._remove_background(source_img, person_mask)
+        # Step 2: 调用 RunningHub Engine (30%)
+        self._update_progress(30, "正在调用 AI 引擎...")
+        self._log_step(ProcessingStep.APPLY_BACKGROUND, "开始换背景处理")
         
-        # Step 4: 准备新背景 (60%)
-        self._update_progress(60, "正在准备新背景...")
-        new_background = self._prepare_background(config)
-        
-        # Step 5: 合成图像 (75%)
-        self._update_progress(75, "正在合成图像...")
-        composed_image = self._compose_image(person_no_bg, new_background, person_mask)
-        
-        # Step 6: 边缘优化 (90%)
-        self._update_progress(90, "正在优化边缘...")
-        final_image = self._refine_edges(composed_image, person_mask, config)
-        
-        # Step 7: 保存结果 (100%)
-        self._update_progress(100, "正在保存结果...")
-        output_path = self._save_result(task_id, final_image)
-        thumbnail_path = self._generate_thumbnail(task_id, final_image)
-        
-        return self._create_success_result(
-            output_image=output_path,
-            thumbnail=thumbnail_path,
-            metadata={
-                "width": 1024,  # TODO: 实际尺寸
-                "height": 1536,
-                "background_type": config.background_type
+        try:
+            # 准备输入数据（换背景工作流使用 model_image 和 bg_image）
+            input_data = {
+                "model_image": str(model_image_path),  # 模特图片
+                "bg_image": str(bg_image_path)  # 输入背景图片
             }
-        )
-    
-    def _load_source_image(self, image_path: str):
-        """
-        加载原始图片
-        
-        Args:
-            image_path: 图片路径
             
-        Returns:
-            图像数据
-        """
-        # TODO: 调用 ImageIO 工具加载图片
-        self._log_step(ProcessingStep.LOAD_IMAGE, f"加载原始图片: {image_path}")
-        pass
-    
-    def _segment_person(self, image):
-        """
-        人像分割
-        
-        Args:
-            image: 图像数据
+            # 执行工作流
+            result = self.runninghub_engine.execute(input_data)
             
-        Returns:
-            分割掩码
-        """
-        # TODO: 调用 SegmentationEngine
-        self._log_step(ProcessingStep.SEGMENT_PERSON, "进行人像分割")
-        pass
-    
-    def _remove_background(self, image, mask):
-        """
-        移除背景
-        
-        Args:
-            image: 图像数据
-            mask: 分割掩码
+        except Exception as e:
+            self._log_step(ProcessingStep.COMPLETE, f"AI 引擎执行失败: {e}")
+            # 根据异常类型选择错误码
+            error_msg = str(e).lower()
+            if "timeout" in error_msg:
+                error_code = TaskErrorCode.COMFYUI_CONNECTION_TIMEOUT
+            elif "connection" in error_msg:
+                error_code = TaskErrorCode.COMFYUI_NOT_AVAILABLE
+            else:
+                error_code = TaskErrorCode.COMFYUI_PROCESSING_FAILED
             
-        Returns:
-            去背景图像
-        """
-        # TODO: 使用掩码移除背景
-        self._log_step(ProcessingStep.REMOVE_BACKGROUND, "移除背景")
-        pass
-    
-    def _prepare_background(self, config: BackgroundChangeConfig):
-        """
-        准备新背景
+            return self._create_error_result(
+                f"换背景处理失败: {e}",
+                error_code=error_code.value
+            )
         
-        Args:
-            config: 配置
+        # Step 3: 下载并保存结果图片 (80%)
+        self._update_progress(80, "正在保存结果...")
+        self._log_step(ProcessingStep.COMPLETE, "保存结果图片")
+        
+        try:
+            # 下载输出图片
+            output_image_info = result.get("output_image")
+            comparison_image_info = result.get("comparison_image")
             
-        Returns:
-            背景图像
-        """
-        # TODO: 根据配置加载或生成背景
-        # - custom: 加载自定义背景图
-        # - preset: 使用预设背景
-        # - remove: 纯色背景或透明背景
-        if config.background_type == "custom":
-            return self._load_custom_background(config.background_image)
-        elif config.background_type == "preset":
-            return self._load_preset_background(config.background_preset)
-        else:
-            return self._create_default_background()
-    
-    def _load_custom_background(self, background_image: Optional[str]):
-        """
-        加载自定义背景
-        
-        Args:
-            background_image: 背景图片路径
+            if not output_image_info:
+                return self._create_error_result(
+                    "未获取到输出图片",
+                    error_code=TaskErrorCode.COMFYUI_RESULT_NOT_FOUND.value
+                )
             
-        Returns:
-            背景图像
-        """
-        # TODO: 加载背景图片
-        pass
-    
-    def _load_preset_background(self, preset_name: Optional[str]):
-        """
-        加载预设背景
-        
-        Args:
-            preset_name: 预设名称
+            # 下载输出图片
+            output_url = output_image_info.get("url")
+            if not output_url:
+                return self._create_error_result(
+                    "输出图片 URL 为空",
+                    error_code=TaskErrorCode.COMFYUI_RESULT_NOT_FOUND.value
+                )
             
-        Returns:
-            背景图像
-        """
-        # TODO: 从预设库加载背景
-        pass
-    
-    def _create_default_background(self):
-        """
-        创建默认背景（纯白色）
-        
-        Returns:
-            背景图像
-        """
-        # TODO: 创建纯色背景
-        pass
-    
-    def _compose_image(self, person, background, mask):
-        """
-        合成图像
-        
-        Args:
-            person: 人像数据
-            background: 背景数据
-            mask: 分割掩码
+            # 下载图片到本地
+            import requests
+            import io
+            from app.utils.image_io import save_image, create_thumbnail
+            from PIL import Image
             
-        Returns:
-            合成图像
-        """
-        # TODO: 使用掩码合成图像
-        self._log_step(ProcessingStep.APPLY_BACKGROUND, "合成图像")
-        pass
-    
-    def _refine_edges(self, image, mask, config: BackgroundChangeConfig):
-        """
-        边缘优化
-        
-        Args:
-            image: 图像数据
-            mask: 分割掩码
-            config: 配置
+            response = requests.get(output_url, timeout=60)
+            response.raise_for_status()
             
-        Returns:
-            优化后的图像
-        """
-        # TODO: 边缘羽化、颜色匹配
-        self._log_step(ProcessingStep.REFINE_EDGE, "优化边缘")
-        pass
-    
-    def _save_result(self, task_id: str, image) -> str:
-        """
-        保存结果图片
-        
-        Args:
-            task_id: 任务ID
-            image: 图像数据
+            # 保存输出图片
+            output_filename = f"{task_id}_output.jpg"
+            output_path = Path(settings.RESULT_DIR) / output_filename
+            output_path.parent.mkdir(parents=True, exist_ok=True)
             
-        Returns:
-            str: 保存路径
-        """
-        # TODO: 调用 Storage 服务保存图片
-        output_path = f"/results/{task_id}_output.jpg"
-        self._log_step(ProcessingStep.COMPLETE, f"保存结果: {output_path}")
-        return output_path
-    
-    def _generate_thumbnail(self, task_id: str, image) -> str:
-        """
-        生成缩略图
-        
-        Args:
-            task_id: 任务ID
-            image: 图像数据
+            # 从响应中读取图片并保存
+            output_img = Image.open(io.BytesIO(response.content))
+            save_image(output_img, str(output_path), format="JPEG", quality=95)
             
-        Returns:
-            str: 缩略图路径
-        """
-        # TODO: 生成缩略图
-        thumbnail_path = f"/results/{task_id}_thumb.jpg"
-        return thumbnail_path
+            # 下载对比图片（如果有）
+            comparison_path = None
+            comparison_filename = None
+            if comparison_image_info:
+                self._log_step(ProcessingStep.COMPLETE, f"找到对比图信息: {comparison_image_info}")
+                comparison_url = comparison_image_info.get("url")
+                if comparison_url:
+                    try:
+                        self._log_step(ProcessingStep.COMPLETE, f"开始下载对比图: {comparison_url}")
+                        comp_response = requests.get(comparison_url, timeout=60)
+                        comp_response.raise_for_status()
+                        comparison_filename = f"{task_id}_comparison.jpg"
+                        comparison_path = Path(settings.RESULT_DIR) / comparison_filename
+                        comp_img = Image.open(io.BytesIO(comp_response.content))
+                        save_image(comp_img, str(comparison_path), format="JPEG", quality=95)
+                        self._log_step(ProcessingStep.COMPLETE, f"对比图已保存: /results/{comparison_filename}")
+                    except Exception as e:
+                        self._log_step(ProcessingStep.COMPLETE, f"下载对比图片失败: {e}")
+            else:
+                self._log_step(ProcessingStep.COMPLETE, "未找到对比图信息")
+            
+            # 生成缩略图
+            thumbnail_path = None
+            try:
+                thumbnail = create_thumbnail(output_img, (256, 256))
+                thumbnail_filename = f"{task_id}_thumb.jpg"
+                thumbnail_path_obj = Path(settings.RESULT_DIR) / thumbnail_filename
+                save_image(thumbnail, str(thumbnail_path_obj), format="JPEG", quality=85)
+                thumbnail_path = f"/results/{thumbnail_filename}"
+            except Exception as e:
+                self._log_step(ProcessingStep.COMPLETE, f"生成缩略图失败: {e}")
+            
+            # Step 4: 完成 (100%)
+            self._update_progress(100, "处理完成")
+            
+            return self._create_success_result(
+                output_image=f"/results/{output_filename}",
+                thumbnail=thumbnail_path,
+                comparison_image=f"/results/{comparison_filename}" if comparison_filename else None,
+                metadata={
+                    "width": output_img.width,
+                    "height": output_img.height,
+                    "background_type": config.background_type
+                }
+            )
+            
+        except Exception as e:
+            self._log_step(ProcessingStep.COMPLETE, f"保存结果失败: {e}")
+            return self._create_error_result(
+                f"保存结果失败: {e}",
+                error_code=TaskErrorCode.COMFYUI_RESULT_NOT_FOUND.value
+            )
+    
 

@@ -125,17 +125,24 @@ class RunningHubEngine(EngineBase):
             # 换头工作流参数
             head_image = input_data.get("head_image")
             cloth_image = input_data.get("cloth_image")
+            # 换背景工作流参数
+            model_image = input_data.get("model_image")
+            bg_image = input_data.get("bg_image")
         else:
             raw_image = input_data
             pose_image = None
             head_image = None
             cloth_image = None
+            model_image = None
+            bg_image = None
         
         # 从 kwargs 获取（优先级更高）
         raw_image_path = kwargs.get("raw_image_path") or raw_image
         pose_image_path = kwargs.get("pose_image_path") or pose_image
         head_image_path = kwargs.get("head_image_path") or head_image
         cloth_image_path = kwargs.get("cloth_image_path") or cloth_image
+        model_image_path = kwargs.get("model_image_path") or model_image
+        bg_image_path = kwargs.get("bg_image_path") or bg_image
         
         # 上传原始图片（姿势迁移工作流）
         if raw_image_path:
@@ -160,6 +167,18 @@ class RunningHubEngine(EngineBase):
             self._log(f"正在上传服装图片: {cloth_image_path}")
             uploaded_filename = self._upload_image(cloth_image_path)
             params["cloth_image"] = uploaded_filename
+        
+        # 上传模特图片（换背景工作流）
+        if model_image_path:
+            self._log(f"正在上传模特图片: {model_image_path}")
+            uploaded_filename = self._upload_image(model_image_path)
+            params["model_image"] = uploaded_filename
+        
+        # 上传背景图片（换背景工作流）
+        if bg_image_path:
+            self._log(f"正在上传背景图片: {bg_image_path}")
+            uploaded_filename = self._upload_image(bg_image_path)
+            params["bg_image"] = uploaded_filename
         
         return params
     
@@ -239,6 +258,7 @@ class RunningHubEngine(EngineBase):
             params: 包含图片文件名的字典
                 - 姿势迁移工作流: raw_image, pose_image
                 - 换头工作流: head_image, cloth_image
+                - 换背景工作流: model_image, bg_image
         
         Returns:
             str: 任务 ID
