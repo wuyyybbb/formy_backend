@@ -138,10 +138,7 @@ class PipelineWorker:
                 
                 self.task_service.complete_task(
                     task_id=task_id,
-                    output_image=result.get("output_image"),
-                    thumbnail=result.get("thumbnail"),
-                    comparison_image=result.get("comparison_image"),
-                    metadata=result.get("metadata", {})
+                    result=result  # 传入完整的 result 字典
                 )
                 
                 print(f"[Worker] ✅ 任务状态已更新为 completed")
