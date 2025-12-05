@@ -156,6 +156,27 @@ class BackgroundPipeline(PipelineBase):
         try:
             model_image_path = resolve_uploaded_file(source_image)
             bg_image_path = resolve_uploaded_file(config.background_image)
+            
+            # 🔍 详细日志：确认图片路径
+            print(f"[BackgroundPipeline] 🔍 输入参数:")
+            print(f"  - source_image (file_id): {source_image}")
+            print(f"  - background_image (file_id): {config.background_image}")
+            print(f"[BackgroundPipeline] 🔍 解析后的本地路径:")
+            print(f"  - model_image_path: {model_image_path}")
+            print(f"  - bg_image_path: {bg_image_path}")
+            
+            # 验证文件是否存在
+            import os
+            if not os.path.exists(model_image_path):
+                print(f"[BackgroundPipeline] ❌ 模特图片不存在: {model_image_path}")
+            else:
+                print(f"[BackgroundPipeline] ✅ 模特图片存在，大小: {os.path.getsize(model_image_path)} bytes")
+            
+            if not os.path.exists(bg_image_path):
+                print(f"[BackgroundPipeline] ❌ 背景图片不存在: {bg_image_path}")
+            else:
+                print(f"[BackgroundPipeline] ✅ 背景图片存在，大小: {os.path.getsize(bg_image_path)} bytes")
+                
         except Exception as e:
             return self._create_error_result(
                 f"加载图片失败: {e}",
@@ -172,6 +193,10 @@ class BackgroundPipeline(PipelineBase):
                 "model_image": str(model_image_path),  # 模特图片
                 "bg_image": str(bg_image_path)  # 输入背景图片
             }
+            
+            print(f"[BackgroundPipeline] 🔍 传递给 RunningHub Engine 的输入数据:")
+            print(f"  - model_image: {input_data['model_image']}")
+            print(f"  - bg_image: {input_data['bg_image']}")
             
             # 执行工作流
             result = self.runninghub_engine.execute(input_data)

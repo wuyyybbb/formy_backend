@@ -178,12 +178,14 @@ class RunningHubEngine(EngineBase):
             self._log(f"正在上传模特图片: {model_image_path}")
             uploaded_filename = self._upload_image(model_image_path)
             params["model_image"] = uploaded_filename
+            print(f"[RunningHubEngine] 🔍 模特图片上传成功: {uploaded_filename}")
         
         # 上传背景图片（换背景工作流）
         if bg_image_path:
             self._log(f"正在上传背景图片: {bg_image_path}")
             uploaded_filename = self._upload_image(bg_image_path)
             params["bg_image"] = uploaded_filename
+            print(f"[RunningHubEngine] 🔍 背景图片上传成功: {uploaded_filename}")
         
         return params
     
@@ -314,6 +316,14 @@ class RunningHubEngine(EngineBase):
             
             self._log(f"提交工作流到 RunningHub: {url}")
             self._log(f"节点信息: {node_info_list}")
+            
+            # 🔍 详细打印节点信息
+            print(f"[RunningHubEngine] 🔍 提交工作流详情:")
+            print(f"  - workflow_id: {self.workflow_id}")
+            print(f"  - node_mapping配置: {self.node_mapping}")
+            print(f"  - 构建的 nodeInfoList:")
+            for idx, node_info in enumerate(node_info_list):
+                print(f"    [{idx}] nodeId={node_info['nodeId']}, fieldName={node_info['fieldName']}, fieldValue={node_info['fieldValue']}")
             
             # 发送请求（添加重试机制）
             # 根据官方建议：创建任务接口在请求量大时会比较慢，建议 30 秒超时，但一定可以成功
