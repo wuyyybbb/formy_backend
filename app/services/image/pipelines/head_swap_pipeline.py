@@ -122,7 +122,13 @@ class HeadSwapPipeline(PipelineBase):
         
         try:
             head_image_path = resolve_uploaded_file(source_image)
-            cloth_image_path = resolve_uploaded_file(config.reference_image)
+            cloth_image_id = config.get_cloth_image()
+            if not cloth_image_id:
+                return self._create_error_result(
+                    "缺少服装图片",
+                    error_code=TaskErrorCode.INVALID_REQUEST.value
+                )
+            cloth_image_path = resolve_uploaded_file(cloth_image_id)
         except Exception as e:
             return self._create_error_result(
                 f"加载图片失败: {e}",

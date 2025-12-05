@@ -24,10 +24,17 @@ class EditTaskInput(BaseModel):
 
 class HeadSwapConfig(BaseModel):
     """换头配置"""
-    reference_image: str = Field(..., description="参考头像图片路径")
+    # 支持多个字段名：reference_image, target_face_image, cloth_image
+    reference_image: Optional[str] = Field(None, description="参考服装图片路径（优先使用）")
+    target_face_image: Optional[str] = Field(None, description="参考服装图片路径（别名）")
+    cloth_image: Optional[str] = Field(None, description="参考服装图片路径（别名）")
     quality: ImageQuality = Field(ImageQuality.HIGH, description="质量等级")
     preserve_details: bool = Field(True, description="保留细节")
     blend_strength: float = Field(0.8, ge=0.0, le=1.0, description="融合强度")
+    
+    def get_cloth_image(self) -> str:
+        """获取服装图片 ID（兼容多种字段名）"""
+        return self.reference_image or self.target_face_image or self.cloth_image or ""
 
 
 class BackgroundChangeConfig(BaseModel):
