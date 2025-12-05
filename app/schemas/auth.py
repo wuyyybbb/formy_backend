@@ -62,3 +62,18 @@ class CurrentUserResponse(BaseModel):
     """当前用户响应"""
     user: UserInfo
 
+
+class SignupRequest(BaseModel):
+    """注册请求（使用 PostgreSQL）"""
+    email: EmailStr = Field(..., description="邮箱地址")
+    password: str = Field(..., min_length=6, max_length=50, description="密码（6-50位）")
+
+
+class SignupResponse(BaseModel):
+    """注册响应"""
+    success: bool
+    message: str
+    access_token: str = Field(..., description="访问令牌")
+    token_type: str = Field(default="bearer", description="令牌类型")
+    user: UserInfo
+

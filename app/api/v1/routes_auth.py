@@ -13,10 +13,13 @@ from app.schemas.auth import (
     CurrentUserResponse,
     SetPasswordRequest,
     SetPasswordResponse,
-    PasswordLoginRequest
+    PasswordLoginRequest,
+    SignupRequest,
+    SignupResponse
 )
 from app.services.auth.auth_service import get_auth_service
 from app.services.email.email_factory import get_email_service
+from app.db import get_pool
 
 
 router = APIRouter()
@@ -314,6 +317,177 @@ async def login_with_password(request: PasswordLoginRequest):
         raise
     except Exception as e:
         print(f"密码登录失败: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"登录失败: {str(e)}"
+        )
+
+
+@router.post("/auth/signup", response_model=SignupResponse)
+async def signup(request: SignupRequest):
+    """
+    注册新用户（使用 PostgreSQL）
+    
+    使用邮箱和密码注册
+    注册时初始化 credits=100，signup_bonus_granted=true
+    注册成功返回 JWT 令牌
+    """
+    try:
+        from app.db.crud_users import get_user_by_email, create_user
+        from app.services.auth.auth_service import get_auth_service
+        import bcrypt
+        
+        auth_service = get_auth_service()
+        
+        # 检查用户是否已存在
+        existing_user = await get_user_by_email(request.email)
+        if existing_user:
+            raise HTTPException(
+                status_code=400,
+                detail="该邮箱已被注册"
+            )
+        
+        # 哈希密码
+        password_hash = auth_service.hash_password(request.password)
+        
+        # 创建用户（初始化 credits=100）
+        new_user = await create_user(
+            email=request.email,
+            password_hash=password_hash,
+            current_credits=100,  # 注册奖励 100 算力
+            is_active=True
+        )
+        
+        # 更新 signup_bonus_granted 字段（如果数据库表中有此字段）
+        # 注意：如果数据库表中没有 signup_bonus_granted 字段，这行会失败
+        # 用户需要确保 Supabase users 表中有此字段
+        pool = get_pool()
+        if pool:
+            try:
+                async with pool.acquire() as conn:
+                    await conn.execute(
+                        """
+                        UPDATE users
+                        SET signup_bonus_granted = true
+                        WHERE user_id = $1
+                        """,
+                        new_user.user_id
+                    )
+            except Exception as e:
+                # 如果字段不存在，只记录警告，不影响注册流程
+                print(f"⚠️  更新 signup_bonus_granted 失败（可能字段不存在）: {e}")
+        
+        # 创建访问令牌
+        access_token = auth_service.create_access_token(new_user)
+        
+        # 返回用户信息和令牌
+        return SignupResponse(
+            success=True,
+            message="注册成功！您已获得 100 算力奖励",
+            access_token=access_token,
+            token_type="bearer",
+            user=UserInfo(
+                user_id=new_user.user_id,
+                email=new_user.email,
+                username=new_user.username,
+                avatar=new_user.avatar,
+                created_at=new_user.created_at.isoformat(),
+                last_login=new_user.last_login.isoformat() if new_user.last_login else None
+            )
+        )
+        
+    except HTTPException:
+        raise
+    except ValueError as e:
+        # 处理用户已存在的错误
+        raise HTTPException(
+            status_code=400,
+            detail=str(e)
+        )
+    except Exception as e:
+        print(f"注册失败: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=500,
+            detail=f"注册失败: {str(e)}"
+        )
+
+
+@router.post("/auth/login-password-db", response_model=LoginResponse)
+async def login_with_password_db(request: PasswordLoginRequest):
+    """
+    密码登录（使用 PostgreSQL）
+    
+    使用邮箱和密码登录
+    登录成功返回 JWT 令牌
+    """
+    try:
+        from app.db.crud_users import get_user_by_email
+        from app.services.auth.auth_service import get_auth_service
+        
+        auth_service = get_auth_service()
+        
+        # 从数据库获取用户
+        user = await get_user_by_email(request.email)
+        
+        if not user:
+            raise HTTPException(
+                status_code=400,
+                detail="邮箱或密码错误"
+            )
+        
+        if not user.password_hash:
+            raise HTTPException(
+                status_code=400,
+                detail="该账户未设置密码，请使用验证码登录"
+            )
+        
+        # 验证密码
+        if not auth_service.verify_password(request.password, user.password_hash):
+            raise HTTPException(
+                status_code=400,
+                detail="邮箱或密码错误"
+            )
+        
+        # 更新最后登录时间
+        pool = get_pool()
+        if pool:
+            from datetime import datetime
+            async with pool.acquire() as conn:
+                await conn.execute(
+                    """
+                    UPDATE users
+                    SET last_login = $1
+                    WHERE user_id = $2
+                    """,
+                    datetime.utcnow(),
+                    user.user_id
+                )
+        
+        # 创建访问令牌
+        access_token = auth_service.create_access_token(user)
+        
+        # 返回用户信息和令牌
+        return LoginResponse(
+            access_token=access_token,
+            token_type="bearer",
+            user=UserInfo(
+                user_id=user.user_id,
+                email=user.email,
+                username=user.username,
+                avatar=user.avatar,
+                created_at=user.created_at.isoformat(),
+                last_login=user.last_login.isoformat() if user.last_login else None
+            )
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"密码登录失败: {e}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(
             status_code=500,
             detail=f"登录失败: {str(e)}"
