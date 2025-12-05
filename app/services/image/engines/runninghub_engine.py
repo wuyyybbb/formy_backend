@@ -537,8 +537,14 @@ class RunningHubEngine(EngineBase):
                 raise Exception(f"未找到输出数据，响应: {status_info}")
             
             self._log(f"收到 {len(data)} 个输出文件")
+            print(f"[RunningHubEngine] 🔍 收到 {len(data)} 个输出文件:")
             for idx, output in enumerate(data):
-                self._log(f"输出 {idx}: fileUrl={output.get('fileUrl', 'N/A')[:50]}..., fileType={output.get('fileType')}, nodeId={output.get('nodeId')}")
+                node_id = output.get('nodeId', 'N/A')
+                file_type = output.get('fileType', 'N/A')
+                file_url = output.get('fileUrl', 'N/A')
+                print(f"  [{idx}] nodeId={node_id}, fileType={file_type}")
+                print(f"      fileUrl={file_url[:80] if file_url != 'N/A' else 'N/A'}...")
+                self._log(f"输出 {idx}: fileUrl={file_url[:50] if file_url != 'N/A' else 'N/A'}..., fileType={file_type}, nodeId={node_id}")
             
             # 查找主输出图片（output:image:1）和对比图（output:image_comparer:2）
             output_image_url = None
@@ -590,8 +596,11 @@ class RunningHubEngine(EngineBase):
                     "type": "comparison"
                 }
                 self._log(f"✅ 对比图已添加到结果中")
+                print(f"[RunningHubEngine] ✅ 对比图 URL: {comparison_url[:80]}...")
             else:
                 self._log(f"⚠️  未找到对比图")
+                print(f"[RunningHubEngine] ⚠️  未找到对比图 - 期望的 nodeId: 6/9/11")
+                print(f"[RunningHubEngine] 📋 实际收到的 nodeId 列表: {[str(o.get('nodeId')) for o in data]}")
             
             self._log(f"任务结果解析成功，输出图片: {output_image_url[:50]}...")
             
