@@ -80,38 +80,54 @@ class BackgroundPipeline(PipelineBase):
         Returns:
             bool: 是否有效
         """
+        print(f"[BackgroundPipeline] 🔍 开始验证输入参数...")
+        print(f"  - source_image: {task_input.source_image}")
+        print(f"  - config: {task_input.config}")
+        
         # 检查源图片是否存在
         try:
             source_path = resolve_uploaded_file(task_input.source_image)
+            print(f"  - 源图片解析路径: {source_path}")
             if not source_path.exists():
-                self._log_step(ProcessingStep.LOAD_IMAGE, f"源图片不存在: {task_input.source_image}")
+                self._log_step(ProcessingStep.LOAD_IMAGE, f"❌ 源图片不存在: {task_input.source_image}")
+                print(f"  ❌ 源图片文件不存在: {source_path}")
                 return False
+            print(f"  ✅ 源图片存在")
         except Exception as e:
-            self._log_step(ProcessingStep.LOAD_IMAGE, f"无法解析源图片: {e}")
+            self._log_step(ProcessingStep.LOAD_IMAGE, f"❌ 无法解析源图片: {e}")
+            print(f"  ❌ 解析源图片失败: {e}")
             return False
         
         # 检查配置中是否有背景图
         config = task_input.config or {}
         bg_image_id = config.get("bg_image") or config.get("background_image")
+        print(f"  - 背景图 ID: {bg_image_id}")
         if not bg_image_id:
-            self._log_step(ProcessingStep.LOAD_IMAGE, "缺少背景图片")
+            self._log_step(ProcessingStep.LOAD_IMAGE, "❌ 缺少背景图片")
+            print(f"  ❌ 配置中缺少背景图片")
             return False
         
         # 检查背景图是否存在
         try:
             bg_path = resolve_uploaded_file(bg_image_id)
+            print(f"  - 背景图解析路径: {bg_path}")
             if not bg_path.exists():
-                self._log_step(ProcessingStep.LOAD_IMAGE, f"背景图片不存在: {bg_image_id}")
+                self._log_step(ProcessingStep.LOAD_IMAGE, f"❌ 背景图片不存在: {bg_image_id}")
+                print(f"  ❌ 背景图文件不存在: {bg_path}")
                 return False
+            print(f"  ✅ 背景图存在")
         except Exception as e:
-            self._log_step(ProcessingStep.LOAD_IMAGE, f"无法解析背景图片: {e}")
+            self._log_step(ProcessingStep.LOAD_IMAGE, f"❌ 无法解析背景图片: {e}")
+            print(f"  ❌ 解析背景图失败: {e}")
             return False
         
         # 检查 Engine 是否可用
         if not self.runninghub_engine:
-            self._log_step(ProcessingStep.COMPLETE, "换背景 Engine 未配置（需要 RunningHub）")
+            self._log_step(ProcessingStep.COMPLETE, "❌ 换背景 Engine 未配置（需要 RunningHub）")
+            print(f"  ❌ RunningHub Engine 未配置")
             return False
         
+        print(f"[BackgroundPipeline] ✅ 输入参数验证通过")
         return True
     
     def _parse_config(self, config: dict) -> BackgroundChangeConfig:
