@@ -94,11 +94,16 @@ class RunningHubEngine(EngineBase):
         
         # 如果是字典，检查必要字段
         if isinstance(input_data, dict):
-            # 至少需要一个图片输入
+            # 至少需要一个图片输入（支持多种工作流的输入字段）
             has_input = any([
                 input_data.get("raw_image"),
                 input_data.get("source_image"),
-                input_data.get("image")
+                input_data.get("image"),
+                input_data.get("head_image"),     # 换头工作流
+                input_data.get("cloth_image"),    # 换头工作流
+                input_data.get("model_image"),    # 换背景工作流
+                input_data.get("bg_image"),       # 换背景工作流
+                input_data.get("pose_image")      # 换姿势工作流
             ])
             return has_input
         
