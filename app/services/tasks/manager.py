@@ -47,9 +47,26 @@ class TaskService:
         task_id = generate_task_id()
         
         # 2. 构建任务数据
+        # 从 config 中提取 reference_image（不同模式使用不同字段名）
+        reference_image = None
+        if request.mode == EditMode.HEAD_SWAP:
+            # 换头：使用 reference_image, target_face_image, 或 cloth_image
+            reference_image = (request.config.get("reference_image") or 
+                             request.config.get("target_face_image") or 
+                             request.config.get("cloth_image"))
+        elif request.mode == EditMode.BACKGROUND_CHANGE:
+            # 换背景：使用 background_image 或 bg_image
+            reference_image = (request.config.get("background_image") or 
+                             request.config.get("bg_image"))
+        elif request.mode == EditMode.POSE_CHANGE:
+            # 换姿势：使用 pose_reference 或 pose_image
+            reference_image = (request.config.get("pose_reference") or 
+                             request.config.get("pose_image"))
+        
         task_data = {
             "mode": request.mode.value,
             "source_image": request.source_image,
+            "reference_image": reference_image,  # 添加参考图片信息
             "config": request.config,
             # Store user_id and credits for refund on failure
             "user_id": user_id,
@@ -69,6 +86,7 @@ class TaskService:
             mode=request.mode,
             progress=0,
             source_image=request.source_image,
+            reference_image=reference_image,
             config=request.config,
             created_at=datetime.now()
         )
@@ -367,6 +385,7 @@ class TaskService:
             progress=int(task_data.get("progress", 0)),
             current_step=task_data.get("current_step"),
             source_image=input_data.get("source_image", ""),
+            reference_image=input_data.get("reference_image"),  # 添加参考图片
             config=input_data.get("config", {}),
             result=result,
             error=error,

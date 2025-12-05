@@ -54,7 +54,8 @@ class TaskInfo(BaseModel):
     current_step: Optional[str] = Field(None, description="当前步骤描述")
     
     # 输入信息
-    source_image: str = Field(..., description="原始图片")
+    source_image: str = Field(..., description="原始图片 file_id")
+    reference_image: Optional[str] = Field(None, description="参考图片 file_id（换头/换背景/换姿势）")
     config: Dict[str, Any] = Field(default_factory=dict, description="配置参数")
     
     # 结果信息
