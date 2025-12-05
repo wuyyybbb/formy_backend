@@ -320,10 +320,17 @@ class RunningHubEngine(EngineBase):
             # 🔍 详细打印节点信息
             print(f"[RunningHubEngine] 🔍 提交工作流详情:")
             print(f"  - workflow_id: {self.workflow_id}")
+            print(f"  - api_base_url: {self.api_base_url}")
             print(f"  - node_mapping配置: {self.node_mapping}")
+            print(f"  - 输入参数 params: {params}")
             print(f"  - 构建的 nodeInfoList:")
             for idx, node_info in enumerate(node_info_list):
                 print(f"    [{idx}] nodeId={node_info['nodeId']}, fieldName={node_info['fieldName']}, fieldValue={node_info['fieldValue']}")
+            
+            # 🔍 打印完整的请求 payload
+            print(f"[RunningHubEngine] 🔍 完整请求 payload:")
+            import json
+            print(json.dumps(payload, indent=2, ensure_ascii=False))
             
             # 发送请求（添加重试机制）
             # 根据官方建议：创建任务接口在请求量大时会比较慢，建议 30 秒超时，但一定可以成功
