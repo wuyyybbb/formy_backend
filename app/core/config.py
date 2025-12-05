@@ -27,9 +27,11 @@ class Settings(BaseSettings):
     HOST: str = "0.0.0.0"
     PORT: int = 8000
     
-    # ==================== PostgreSQL 配置（Supabase）====================
+    # ==================== 数据库配置 ====================
     # 方式1: 使用完整的数据库 URL（推荐，Supabase 提供）
     DATABASE_URL: Optional[str] = None
+    DATABASE_POOL_SIZE: int = 10
+    DATABASE_MAX_OVERFLOW: int = 20
     # 方式2: 分别配置各项（备选，本地开发）
     DB_HOST: str = "localhost"
     DB_PORT: int = 5432
