@@ -13,7 +13,9 @@ from app.schemas.task import (
 from app.services.tasks.manager import TaskService
 from app.services.billing import billing_service
 from app.services.auth.auth_service import get_current_user_id
+from app.api.v1.routes_auth import get_current_user
 from app.config.credits_cost import calculate_task_credits
+from app.models.user import User
 
 router = APIRouter()
 
@@ -242,6 +244,70 @@ async def list_tasks(
         raise HTTPException(
             status_code=500,
             detail=f"获取任务列表失败: {str(e)}"
+        )
+
+
+@router.get("/tasks/history", response_model=TaskListResponse)
+async def get_task_history(
+    mode: Optional[str] = Query(None, description="任务模式筛选（HEAD_SWAP/BACKGROUND_CHANGE/POSE_CHANGE）"),
+    page: int = Query(1, ge=1, description="页码"),
+    page_size: int = Query(20, ge=1, le=100, description="每页数量"),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    获取任务历史记录（需要登录，只返回当前用户的任务）
+    
+    返回的任务信息包含输入图字段（source_image, reference_image），
+    方便前端点击历史时恢复输入图片。
+    
+    Args:
+        mode: 任务模式筛选（可选）
+        page: 页码
+        page_size: 每页数量
+        current_user: 当前用户（从 token 获取）
+        
+    Returns:
+        TaskListResponse: 任务列表（包含输入图字段）
+    """
+    try:
+        task_service = get_task_service()
+        user_id = current_user.user_id
+        
+        # 获取任务列表（只返回当前用户的任务）
+        tasks = task_service.get_task_list(
+            user_id=user_id,
+            status_filter=None,  # 历史记录不筛选状态
+            mode_filter=mode,
+            page=page,
+            page_size=page_size
+        )
+        
+        # 将 TaskSummary 转换为 TaskInfo（包含完整的输入图信息）
+        task_infos = []
+        for task_summary in tasks:
+            # 获取完整任务信息（包含 source_image, reference_image）
+            full_task = task_service.get_task(task_summary.task_id)
+            if full_task:
+                # 确保输入图字段存在
+                # TaskInfo 已经包含了 source_image 和 reference_image
+                task_infos.append(full_task)
+        
+        return TaskListResponse(
+            tasks=task_infos,
+            pagination={
+                "page": page,
+                "page_size": page_size,
+                "total": len(task_infos)
+            }
+        )
+        
+    except Exception as e:
+        print(f"获取任务历史失败: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=500,
+            detail=f"获取任务历史失败: {str(e)}"
         )
 
 
