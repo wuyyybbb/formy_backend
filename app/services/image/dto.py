@@ -32,7 +32,7 @@ class HeadSwapConfig(BaseModel):
 
 class BackgroundChangeConfig(BaseModel):
     """换背景配置"""
-    background_type: str = Field(..., description="背景类型: custom/preset/remove")
+    background_type: str = Field(default="custom", description="背景类型: custom/preset/remove")
     background_image: Optional[str] = Field(None, description="自定义背景图片路径")
     background_preset: Optional[str] = Field(None, description="预设背景名称")
     edge_blur: int = Field(2, ge=0, le=10, description="边缘羽化程度")
