@@ -43,3 +43,6 @@ bcrypt==4.1.2
 # 邮箱验证（EmailStr 类型需要）
 email-validator==2.3.0
 
+# PostgreSQL 异步驱动（用于连接 Supabase）
+asyncpg==0.29.0
+
