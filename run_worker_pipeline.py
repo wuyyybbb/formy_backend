@@ -10,7 +10,7 @@ from pathlib import Path
 
 from app.services.tasks.queue import get_task_queue
 from app.services.tasks.manager import get_task_service
-from app.schemas.task import EditMode
+from app.schemas.task import EditMode, TaskStatus
 from app.services.image.pipelines.pose_change_pipeline import PoseChangePipeline
 from app.services.image.pipelines.head_swap_pipeline import HeadSwapPipeline
 from app.services.image.pipelines.background_pipeline import BackgroundPipeline
@@ -106,18 +106,18 @@ class PipelineWorker:
             task_id: 任务ID
         """
         try:
-            # 获取任务详情
-            task = self.task_service.get_task(task_id)
+            # 获取任务数据（从队列获取原始数据）
+            task_data = self.queue.get_task_data(task_id)
             
-            if not task:
+            if not task_data:
                 print(f"[Worker] ❌ 任务不存在: {task_id}")
                 return
             
-            # 提取任务参数
-            task_data = task.get("data", {})
-            mode = task_data.get("mode")
-            source_image = task_data.get("source_image")
-            config = task_data.get("config", {})
+            # 提取任务参数（任务数据保存在 "data" 字段中）
+            input_data = task_data.get("data", {})
+            mode = input_data.get("mode")
+            source_image = input_data.get("source_image")
+            config = input_data.get("config", {})
             
             print(f"[Worker] 📋 任务模式: {mode}")
             print(f"[Worker] 🖼️  原始图片: {source_image}")
@@ -150,8 +150,8 @@ class PipelineWorker:
                 print(f"[Worker] ❌ 任务处理失败")
                 
                 # 如果任务状态还不是 failed，标记为失败
-                task = self.task_service.get_task(task_id)
-                if task and task.get("status") != "failed":
+                task_info = self.task_service.get_task(task_id)
+                if task_info and task_info.status != TaskStatus.FAILED:
                     self.task_service.fail_task(
                         task_id=task_id,
                         error_code="PIPELINE_ERROR",
