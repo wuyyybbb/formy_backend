@@ -552,12 +552,12 @@ class RunningHubEngine(EngineBase):
                     continue
                 
                 # 根据 nodeId 判断输出类型
-                # nodeId "10" 对应 output:image:1（主输出）
-                # nodeId "11" 或其他包含 "comparer" 的 对应 output:image_comparer:2（对比图）
-                if node_id == "10" or "image:1" in node_id:
+                # 换背景工作流: nodeId "4" 对应 output:image:1（主输出），nodeId "6" 对应 output:image_comparer:2（对比图）
+                # 换姿势/换头工作流: nodeId "10" 对应主输出，nodeId "11" 对应对比图
+                if node_id in ["4", "10"] or "image:1" in node_id:
                     output_image_url = file_url
                     self._log(f"找到主输出图片 (nodeId={node_id}): {file_url[:50]}...")
-                elif node_id == "11" or "comparer" in node_id or "image_comparer" in node_id:
+                elif node_id in ["6", "11"] or "comparer" in node_id or "image_comparer" in node_id:
                     comparison_url = file_url
                     self._log(f"找到对比图 (nodeId={node_id}): {file_url[:50]}...")
             

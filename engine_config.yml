@@ -43,13 +43,13 @@ engines:
       api_base_url: "https://www.runninghub.ai"  # API 基础 URL（国际版）
       timeout: 300  # 超时时间（5 分钟）
       poll_interval: 8  # 轮询间隔（秒）
-      # 节点映射配置（根据工作流节点名称配置）
+      # 节点映射配置（根据工作流 JSON 文件确认）
       node_mapping:
-        model_image:  # input:model_image:1 - 模特图片
-          node_id: "1"
-          field_name: "image"
-        bg_image:  # input:bg_image:2 - 输入背景图片
+        model_image:  # input:model_image:1 - 模特图片（节点 #2）
           node_id: "2"
+          field_name: "image"
+        bg_image:  # input:bg_image:2 - 背景图片（节点 #3）
+          node_id: "3"
           field_name: "image"
   
   # ========== 已废弃的引擎（不再使用） ==========
