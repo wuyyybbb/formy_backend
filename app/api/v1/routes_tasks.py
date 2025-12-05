@@ -107,6 +107,11 @@ async def create_task(
         # 在任务信息中记录消耗的算力（可选）
         task_info.credits_consumed = required_credits
         
+        # 5. 将任务ID推送到 Redis 队列 task_queue
+        from app.utils.redis_client import get_redis_client
+        redis_client = get_redis_client()
+        redis_client.rpush("task_queue", task_info.task_id)
+        
         print(f"✓ Task created successfully: {task_info.task_id}, Credits: {required_credits}")
         
         return task_info
