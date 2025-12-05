@@ -293,9 +293,21 @@ async def get_task_history(
             # 获取完整任务信息（包含 source_image, reference_image）
             full_task = task_service.get_task(task_summary.task_id)
             if full_task:
-                # 确保输入图字段存在
-                # TaskInfo 已经包含了 source_image 和 reference_image
-                task_infos.append(full_task)
+                # 构建图片 URL（用于前端回填）
+                task_dict = full_task.model_dump()
+                
+                # 添加 face_image_url 和 target_image_url
+                if full_task.source_image:
+                    task_dict["face_image_url"] = f"/api/v1/uploads/{full_task.source_image}"
+                else:
+                    task_dict["face_image_url"] = None
+                
+                if full_task.reference_image:
+                    task_dict["target_image_url"] = f"/api/v1/uploads/{full_task.reference_image}"
+                else:
+                    task_dict["target_image_url"] = None
+                
+                task_infos.append(task_dict)
         
         return TaskListResponse(
             tasks=task_infos,
