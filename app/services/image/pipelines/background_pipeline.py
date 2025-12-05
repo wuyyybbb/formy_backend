@@ -177,7 +177,12 @@ class BackgroundPipeline(PipelineBase):
             result = self.runninghub_engine.execute(input_data)
             
         except Exception as e:
+            # 打印详细错误信息
+            import traceback
+            error_trace = traceback.format_exc()
             self._log_step(ProcessingStep.COMPLETE, f"AI 引擎执行失败: {e}")
+            print(f"[BackgroundPipeline] 详细错误信息:\n{error_trace}")
+            
             # 根据异常类型选择错误码
             error_msg = str(e).lower()
             if "timeout" in error_msg:
