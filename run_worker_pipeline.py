@@ -135,13 +135,21 @@ class PipelineWorker:
                 # 标记任务完成
                 print(f"[Worker] ✅ 任务处理完成")
                 print(f"[Worker] 📸 输出图片: {result.get('output_image')}")
+                print(f"[Worker] 📸 对比图: {result.get('comparison_image')}")
+                print(f"[Worker] 📸 缩略图: {result.get('thumbnail')}")
+                print(f"[Worker] 📋 完整结果: {result}")
                 
-                self.task_service.complete_task(
-                    task_id=task_id,
-                    result=result  # 传入完整的 result 字典
-                )
-                
-                print(f"[Worker] ✅ 任务状态已更新为 completed")
+                try:
+                    success = self.task_service.complete_task(
+                        task_id=task_id,
+                        result=result  # 传入完整的 result 字典
+                    )
+                    print(f"[Worker] ✅ 任务状态已更新为 completed, 结果: {success}")
+                except Exception as e:
+                    print(f"[Worker] ❌ 更新任务状态失败: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    raise
             else:
                 # Pipeline 返回 None，表示失败（错误已在 Pipeline 中记录）
                 print(f"[Worker] ❌ 任务处理失败")
@@ -332,6 +340,10 @@ class PipelineWorker:
             # 执行 Pipeline
             result = self.background_pipeline.execute(task_input)
             
+            print(f"[Worker] 🔍 Pipeline 返回结果: success={result.success}")
+            print(f"[Worker] 🔍 result.output_image: {result.output_image}")
+            print(f"[Worker] 🔍 result.comparison_image: {result.comparison_image}")
+            
             # 检查结果
             if result.success:
                 return {
@@ -341,6 +353,7 @@ class PipelineWorker:
                     "metadata": result.metadata
                 }
             else:
+                print(f"[Worker] ❌ Pipeline 返回失败: {result.error_message}")
                 return None
                 
         except Exception as e:
