@@ -8,6 +8,7 @@ from pathlib import Path
 
 from app.core.config import settings
 from app.api.v1 import routes_upload, routes_tasks, routes_auth, routes_plans, routes_billing, routes_admin
+from app.db import connect_to_db, close_db_connection
 
 # 创建 FastAPI 应用
 app = FastAPI(
@@ -48,6 +49,37 @@ app.include_router(routes_auth.router, prefix=settings.API_V1_PREFIX, tags=["aut
 app.include_router(routes_plans.router, prefix=settings.API_V1_PREFIX, tags=["plans"])
 app.include_router(routes_billing.router, prefix=settings.API_V1_PREFIX, tags=["billing"])
 app.include_router(routes_admin.router, prefix=settings.API_V1_PREFIX, tags=["admin"])
+
+
+# ==================== 生命周期事件 ====================
+
+@app.on_event("startup")
+async def startup_event():
+    """应用启动时执行"""
+    print("\n" + "="*60)
+    print("🚀 Application Startup")
+    print("="*60)
+    
+    # 连接 PostgreSQL 数据库
+    try:
+        await connect_to_db()
+    except Exception as e:
+        print(f"⚠️  数据库连接失败（应用将继续运行）: {e}")
+    
+    print("="*60 + "\n")
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """应用关闭时执行"""
+    print("\n" + "="*60)
+    print("🛑 Application Shutdown")
+    print("="*60)
+    
+    # 关闭 PostgreSQL 连接池
+    await close_db_connection()
+    
+    print("="*60 + "\n")
 
 
 @app.get("/")

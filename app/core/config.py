@@ -27,6 +27,16 @@ class Settings(BaseSettings):
     HOST: str = "0.0.0.0"
     PORT: int = 8000
     
+    # ==================== PostgreSQL 配置（Supabase）====================
+    # 方式1: 使用完整的数据库 URL（推荐，Supabase 提供）
+    DATABASE_URL: Optional[str] = None
+    # 方式2: 分别配置各项（备选，本地开发）
+    DB_HOST: str = "localhost"
+    DB_PORT: int = 5432
+    DB_NAME: str = "postgres"
+    DB_USER: str = "postgres"
+    DB_PASSWORD: Optional[str] = None
+    
     # ==================== Redis 配置 ====================
     # 方式1: 使用完整的 Redis URL（推荐，适合云平台）
     REDIS_URL: Optional[str] = None
