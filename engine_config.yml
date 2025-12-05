@@ -20,18 +20,18 @@ engines:
   runninghub_head_swap:
     type: runninghub
     config:
-      api_key: "84427127c24546879969f10983fe578a"  # RunningHub API Key（与姿势迁移相同）
+      api_key: "84427127c24546879969f10983fe578a"  # RunningHub API Key（与其他工作流相同）
       workflow_id: "1996469641855770625"  # 换头工作流 ID
       api_base_url: "https://www.runninghub.ai"  # API 基础 URL（国际版）
       timeout: 300  # 超时时间（5 分钟）
       poll_interval: 8  # 轮询间隔（秒）
-      # 节点映射配置（根据工作流节点名称配置）
+      # 节点映射配置（根据工作流 JSON 文件确认）
       node_mapping:
-        head_image:  # input:head_image:1 - 模特脸部特写图片
-          node_id: "1"
+        head_image:  # input:head_image:1 - 模特脸部特写图片（节点 #6）
+          node_id: "6"
           field_name: "image"
-        cloth_image:  # input:cloth_image:2 - 输入服装图片
-          node_id: "2"
+        cloth_image:  # input:cloth_image:2 - 服装图片（节点 #7）
+          node_id: "7"
           field_name: "image"
   
   # RunningHub 换背景工作流
