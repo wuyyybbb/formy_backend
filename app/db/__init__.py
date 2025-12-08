@@ -1,3 +1,6 @@
+print("[DB] __init__ loaded VERSION = 2025-12-08-1535")
+
+
 """
 数据库模块 & PostgreSQL 连接管理（使用 asyncpg）
 用于连接 Supabase PostgreSQL 数据库
