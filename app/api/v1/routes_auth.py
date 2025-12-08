@@ -546,3 +546,43 @@ async def test_email_service(email: str = "test@example.com"):
             "traceback": traceback.format_exc()
         }
 
+
+@router.post("/auth/debug-token")
+async def debug_token(authorization: Optional[str] = Header(None), token: Optional[str] = None):
+    """
+    临时调试接口：验证并解码 JWT token
+
+    用法：
+    - 在 `Authorization: Bearer <token>` header 中传入，或
+    - 在请求 body/form 中传入 `token`
+
+    注意：该接口仅用于调试，生产环境请移除或限制访问。
+    """
+    try:
+        # 优先从 Authorization header 获取
+        if authorization and not token:
+            parts = authorization.split()
+            if len(parts) == 2 and parts[0].lower() == "bearer":
+                token = parts[1]
+
+        if not token:
+            raise HTTPException(status_code=400, detail="缺少 token，请在 Authorization header 或 body 中提供")
+
+        auth_service = get_auth_service()
+        payload = auth_service.decode_access_token(token)
+
+        if not payload:
+            raise HTTPException(status_code=401, detail="无效或已过期的 token")
+
+        return {
+            "valid": True,
+            "payload": payload
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"调试 token 时发生错误: {e}")
+
