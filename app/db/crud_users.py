@@ -4,8 +4,16 @@
 from datetime import datetime
 from typing import Optional
 import asyncpg
-from app.db import get_pool
 from app.models.user import User
+
+
+def _get_pool():
+    """
+    延迟从 app.db 导入 get_pool，避免在模块导入阶段产生循环导入。
+    只有在真正需要访问数据库时才会执行 import。
+    """
+    from app.db import get_pool  # 延迟导入
+    return get_pool()
 
 
 async def get_user_by_email(email: str) -> Optional[User]:
@@ -21,7 +29,7 @@ async def get_user_by_email(email: str) -> Optional[User]:
     Raises:
         Exception: 数据库连接错误
     """
-    pool = get_pool()
+    pool = _get_pool()
     if not pool:
         raise Exception("数据库连接池未初始化")
     
@@ -82,25 +90,8 @@ async def create_user(
 ) -> User:
     """
     创建新用户
-    
-    Args:
-        email: 用户邮箱地址（必需）
-        user_id: 用户 ID（可选，如果不提供则自动生成）
-        username: 用户名（可选）
-        avatar: 头像 URL（可选）
-        password_hash: 密码哈希值（可选）
-        current_plan_id: 当前套餐 ID（可选）
-        current_credits: 初始算力（默认 100，注册奖励）
-        is_active: 是否激活（默认 True）
-        signup_bonus_granted: 注册奖励是否已发放（默认 True）
-        
-    Returns:
-        User: 创建的用户对象
-        
-    Raises:
-        Exception: 数据库连接错误或用户已存在
     """
-    pool = get_pool()
+    pool = _get_pool()
     if not pool:
         raise Exception("数据库连接池未初始化")
     
@@ -233,19 +224,8 @@ async def update_user_credits(
 ) -> bool:
     """
     更新用户积分
-    
-    Args:
-        user_id: 用户ID
-        credits_delta: 积分变化量（正数表示增加，负数表示扣除）
-        update_total_used: 是否同时更新 total_credits_used（扣除时为 True）
-        
-    Returns:
-        bool: 是否更新成功
-        
-    Raises:
-        Exception: 数据库连接错误
     """
-    pool = get_pool()
+    pool = _get_pool()
     if not pool:
         raise Exception("数据库连接池未初始化")
     
@@ -283,17 +263,8 @@ async def update_user_credits(
 async def get_user_by_id(user_id: str) -> Optional[User]:
     """
     根据用户ID获取用户
-    
-    Args:
-        user_id: 用户ID
-        
-    Returns:
-        Optional[User]: 用户对象，如果不存在则返回 None
-        
-    Raises:
-        Exception: 数据库连接错误
     """
-    pool = get_pool()
+    pool = _get_pool()
     if not pool:
         raise Exception("数据库连接池未初始化")
     
@@ -344,18 +315,8 @@ async def get_user_by_id(user_id: str) -> Optional[User]:
 async def verify_user(email: str, password_hash: str) -> Optional[User]:
     """
     验证用户密码（通过密码哈希值验证）
-    
-    Args:
-        email: 用户邮箱地址
-        password_hash: 密码哈希值（用于验证）
-        
-    Returns:
-        Optional[User]: 如果验证成功返回用户对象，否则返回 None
-        
-    Raises:
-        Exception: 数据库连接错误
     """
-    pool = get_pool()
+    pool = _get_pool()
     if not pool:
         raise Exception("数据库连接池未初始化")
     
@@ -413,4 +374,3 @@ async def verify_user(email: str, password_hash: str) -> Optional[User]:
             plan_renew_at=row['plan_renew_at'],
             total_credits_used=row['total_credits_used'] or 0
         )
-
