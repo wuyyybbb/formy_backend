@@ -444,3 +444,4 @@ def _row_to_task_info(row: asyncpg.Record) -> TaskInfo:
         failed_at=row['failed_at'],
         processing_time=row['processing_time']
     )
+

@@ -267,3 +267,4 @@ class BillingServiceDB:
 
 # 全局实例（数据库版本）
 billing_service_db = BillingServiceDB()
+

@@ -109,3 +109,4 @@ COMMENT ON COLUMN tasks.updated_at IS '最后更新时间';
 COMMENT ON COLUMN tasks.completed_at IS '任务完成时间';
 COMMENT ON COLUMN tasks.failed_at IS '任务失败时间';
 COMMENT ON COLUMN tasks.processing_time IS '处理耗时（秒）';
+
