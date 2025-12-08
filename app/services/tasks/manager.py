@@ -3,6 +3,7 @@
 提供任务创建、查询、取消等业务逻辑
 """
 import json
+import asyncio
 from typing import Optional, List
 from datetime import datetime
 
@@ -17,6 +18,7 @@ from app.schemas.task import (
 )
 from app.services.tasks.queue import get_task_queue
 from app.utils.id_generator import generate_task_id
+from app.db import crud_tasks
 
 
 class TaskService:
@@ -63,33 +65,34 @@ class TaskService:
             reference_image = (request.config.get("pose_reference") or 
                              request.config.get("pose_image"))
         
+        # 3. 写入数据库（持久化存储）
+        task_info = asyncio.run(crud_tasks.create_task(
+            task_id=task_id,
+            user_id=user_id,
+            mode=request.mode.value,
+            source_image=request.source_image,
+            reference_image=reference_image,
+            config=request.config,
+            credits_consumed=credits_consumed
+        ))
+        
+        # 4. 推入 Redis 队列（用于 worker 处理）
         task_data = {
             "mode": request.mode.value,
             "source_image": request.source_image,
-            "reference_image": reference_image,  # 添加参考图片信息
+            "reference_image": reference_image,
             "config": request.config,
-            # Store user_id and credits for refund on failure
             "user_id": user_id,
             "credits_consumed": credits_consumed
         }
         
-        # 3. 推入队列
         success = self.queue.push_task(task_id, task_data)
         
         if not success:
             raise Exception("Failed to create task: cannot push to queue")
         
-        # 4. 返回任务信息
-        return TaskInfo(
-            task_id=task_id,
-            status=TaskStatus.PENDING,
-            mode=request.mode,
-            progress=0,
-            source_image=request.source_image,
-            reference_image=reference_image,
-            config=request.config,
-            created_at=datetime.now()
-        )
+        # 5. 返回任务信息
+        return task_info
     
     def get_task(self, task_id: str) -> Optional[TaskInfo]:
         """
@@ -101,14 +104,9 @@ class TaskService:
         Returns:
             Optional[TaskInfo]: 任务信息，不存在返回 None
         """
-        # 从 Redis 获取任务数据
-        task_data = self.queue.get_task_data(task_id)
-        
-        if not task_data:
-            return None
-        
-        # 解析任务信息
-        return self._parse_task_info(task_data)
+        # 从数据库获取任务数据
+        task_info = asyncio.run(crud_tasks.get_task_by_id(task_id))
+        return task_info
     
     def get_task_list(
         self, 
@@ -134,58 +132,29 @@ class TaskService:
         if not user_id:
             raise ValueError("user_id 是必需的，用于过滤任务")
         
-        # 获取所有任务ID（可按状态筛选）
-        task_ids = self.queue.get_all_task_ids(status_filter=status_filter)
+        # 从数据库获取任务列表
+        task_infos = asyncio.run(crud_tasks.get_tasks_by_user(
+            user_id=user_id,
+            status_filter=status_filter,
+            mode_filter=mode_filter,
+            page=page,
+            page_size=page_size
+        ))
         
-        # 获取每个任务的详细信息
+        # 转换为任务摘要
         tasks = []
-        for task_id in task_ids:
-            task_data = self.queue.get_task_data(task_id)
-            if task_data:
-                # 检查任务是否属于当前用户
-                # 注意：任务数据保存在 "data" 字段中，不是 "input"
-                input_data = task_data.get("data", {})
-                if isinstance(input_data, str):
-                    import json
-                    input_data = json.loads(input_data)
-                
-                task_user_id = input_data.get("user_id")
-                
-                # 如果任务没有 user_id（旧任务），跳过（无法确定归属）
-                if task_user_id is None:
-                    # 旧任务，跳过（安全考虑：不显示无法确定归属的任务）
-                    continue
-                
-                # 如果任务有 user_id，检查是否属于当前用户
-                if task_user_id != user_id:
-                    # 跳过不属于当前用户的任务
-                    continue
-                
-                task_info = self._parse_task_info(task_data)
-                
-                # 模式筛选
-                if mode_filter and task_info.mode.value != mode_filter:
-                    continue
-                
-                # 构建摘要
-                tasks.append(TaskSummary(
-                    task_id=task_info.task_id,
-                    status=task_info.status,
-                    mode=task_info.mode,
-                    thumbnail=task_info.result.thumbnail if task_info.result else None,
-                    progress=task_info.progress,
-                    created_at=task_info.created_at,
-                    completed_at=task_info.completed_at
-                ))
+        for task_info in task_infos:
+            tasks.append(TaskSummary(
+                task_id=task_info.task_id,
+                status=task_info.status,
+                mode=task_info.mode,
+                thumbnail=task_info.result.thumbnail if task_info.result else None,
+                progress=task_info.progress,
+                created_at=task_info.created_at,
+                completed_at=task_info.completed_at
+            ))
         
-        # 按创建时间倒序排序
-        tasks.sort(key=lambda x: x.created_at, reverse=True)
-        
-        # 分页
-        start_idx = (page - 1) * page_size
-        end_idx = start_idx + page_size
-        
-        return tasks[start_idx:end_idx]
+        return tasks
     
     def cancel_task(self, task_id: str) -> bool:
         """
@@ -197,12 +166,16 @@ class TaskService:
         Returns:
             bool: 是否成功
         """
-        # 检查任务是否存在
-        if not self.queue.is_task_exists(task_id):
-            return False
+        # 更新数据库状态为已取消
+        success = asyncio.run(crud_tasks.update_task_status(
+            task_id=task_id,
+            status=TaskStatus.CANCELLED.value
+        ))
         
-        # 取消任务
-        return self.queue.cancel_task(task_id)
+        # 同时更新 Redis（用于兼容性）
+        self.queue.cancel_task(task_id)
+        
+        return success
     
     def update_task_progress(
         self, 
@@ -221,12 +194,23 @@ class TaskService:
         Returns:
             bool: 是否成功
         """
-        return self.queue.update_task_status(
+        # 更新数据库
+        success = asyncio.run(crud_tasks.update_task_status(
+            task_id=task_id,
+            status=TaskStatus.PROCESSING.value,
+            progress=progress,
+            current_step=current_step
+        ))
+        
+        # 同时更新 Redis（用于兼容性，可选）
+        self.queue.update_task_status(
             task_id=task_id,
             status="processing",
             progress=progress,
             current_step=current_step
         )
+        
+        return success
     
     def complete_task(
         self, 
@@ -243,12 +227,23 @@ class TaskService:
         Returns:
             bool: 是否成功
         """
-        return self.queue.update_task_status(
+        # 更新数据库
+        success = asyncio.run(crud_tasks.update_task_status(
+            task_id=task_id,
+            status=TaskStatus.DONE.value,
+            progress=100,
+            result=result
+        ))
+        
+        # 同时更新 Redis（用于兼容性，可选）
+        self.queue.update_task_status(
             task_id=task_id,
             status="done",
             progress=100,
             result=result
         )
+        
+        return success
     
     def fail_task(
         self, 
@@ -278,11 +273,21 @@ class TaskService:
         # Refund credits if task fails
         self.refund_credits_for_failed_task(task_id)
         
-        return self.queue.update_task_status(
+        # 更新数据库
+        success = asyncio.run(crud_tasks.update_task_status(
+            task_id=task_id,
+            status=TaskStatus.FAILED.value,
+            error=error
+        ))
+        
+        # 同时更新 Redis（用于兼容性，可选）
+        self.queue.update_task_status(
             task_id=task_id,
             status="failed",
             error=error
         )
+        
+        return success
     
     def refund_credits_for_failed_task(self, task_id: str) -> bool:
         """
@@ -297,20 +302,28 @@ class TaskService:
             bool: 是否成功退款
         """
         try:
-            # Get task data to retrieve user_id and credits_consumed
-            task_data = self.queue.get_task_data(task_id)
-            if not task_data:
+            # Get task data from database
+            task_info = asyncio.run(crud_tasks.get_task_by_id(task_id))
+            if not task_info:
                 print(f"[Refund] Task {task_id} not found, cannot refund")
                 return False
             
-            # Parse task input data
-            input_data = task_data.get("data", {})
-            if isinstance(input_data, str):
-                import json
-                input_data = json.loads(input_data)
+            # Get user_id and credits_consumed from task info
+            # Note: We need to get user_id from database
+            # For now, try to get from Redis for backward compatibility
+            task_data = self.queue.get_task_data(task_id)
+            if task_data:
+                input_data = task_data.get("data", {})
+                if isinstance(input_data, str):
+                    import json
+                    input_data = json.loads(input_data)
+                user_id = input_data.get("user_id")
+            else:
+                # If Redis data not available, we can't refund (need user_id)
+                print(f"[Refund] Task {task_id} missing user data in Redis")
+                return False
             
-            user_id = input_data.get("user_id")
-            credits_consumed = input_data.get("credits_consumed")
+            credits_consumed = task_info.credits_consumed
             
             if not user_id or not credits_consumed:
                 print(f"[Refund] Task {task_id} missing user_id or credits_consumed")

@@ -166,7 +166,7 @@ async def get_task(
         )
     
     # 检查任务是否属于当前用户
-    # 从任务数据中获取 user_id
+    # 从数据库获取 user_id（通过 Redis 队列数据获取）
     task_data = task_service.queue.get_task_data(task_id)
     if task_data:
         # 注意：任务数据保存在 "data" 字段中，不是 "input"
@@ -189,9 +189,8 @@ async def get_task(
             # 旧任务没有 user_id，向后兼容：允许访问
             print(f"ℹ️  旧任务（无 user_id）: {task_id}, 允许访问（向后兼容）")
     else:
-        # task_data 不存在，但 task_info 存在，可能是旧数据格式
-        # 为了安全，仍然允许访问（向后兼容）
-        print(f"ℹ️  任务数据不存在: {task_id}, 但任务信息存在，允许访问（向后兼容）")
+        # Redis 中没有数据，可能已经被清理，仍然允许访问（数据库中存在）
+        print(f"ℹ️  Redis 中任务数据不存在: {task_id}, 但数据库中存在，允许访问")
     
     return task_info
 
@@ -350,33 +349,39 @@ async def cancel_task(
     try:
         task_service = get_task_service()
         
-        # 检查任务是否属于当前用户
-        task_data = task_service.queue.get_task_data(task_id)
-        if not task_data:
+        # 从数据库获取任务信息
+        task_info = task_service.get_task(task_id)
+        if not task_info:
             raise HTTPException(
                 status_code=404,
                 detail=f"任务不存在: {task_id}"
             )
         
-        # 注意：任务数据保存在 "data" 字段中，不是 "input"
-        input_data = task_data.get("data", {})
-        if isinstance(input_data, str):
-            import json
-            input_data = json.loads(input_data)
-        
-        task_user_id = input_data.get("user_id")
-        
-        # 如果任务有 user_id，检查权限
-        if task_user_id is not None:
-            if task_user_id != current_user_id:
-                print(f"⚠️  取消任务权限检查失败: 任务 {task_id} 属于用户 {task_user_id}, 当前用户 {current_user_id}")
-                raise HTTPException(
-                    status_code=403,
-                    detail="无权取消该任务"
-                )
+        # 检查任务是否属于当前用户（从 Redis 获取 user_id）
+        task_data = task_service.queue.get_task_data(task_id)
+        if task_data:
+            # 注意：任务数据保存在 "data" 字段中，不是 "input"
+            input_data = task_data.get("data", {})
+            if isinstance(input_data, str):
+                import json
+                input_data = json.loads(input_data)
+            
+            task_user_id = input_data.get("user_id")
+            
+            # 如果任务有 user_id，检查权限
+            if task_user_id is not None:
+                if task_user_id != current_user_id:
+                    print(f"⚠️  取消任务权限检查失败: 任务 {task_id} 属于用户 {task_user_id}, 当前用户 {current_user_id}")
+                    raise HTTPException(
+                        status_code=403,
+                        detail="无权取消该任务"
+                    )
+            else:
+                # 旧任务没有 user_id，向后兼容：允许取消
+                print(f"ℹ️  取消旧任务（无 user_id）: {task_id}, 允许取消（向后兼容）")
         else:
-            # 旧任务没有 user_id，向后兼容：允许取消
-            print(f"ℹ️  取消旧任务（无 user_id）: {task_id}, 允许取消（向后兼容）")
+            # Redis 中没有数据，可能已经被清理，仍然允许取消
+            print(f"ℹ️  Redis 中任务数据不存在: {task_id}, 仍然允许取消")
         
         success = task_service.cancel_task(task_id)
         

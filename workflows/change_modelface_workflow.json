@@ -1,0 +1,84 @@
+{
+  "4": {
+    "inputs": {
+      "prompt": "Show the full body of the model in image1. accroding the pose and full-body outfit of image2, Keep the facial details of the model in image1 unchanged, and maintain the outfit and shoes and bags of image2.  ",
+      "seed": 485603580,
+      "aspectRatio": "2:3",
+      "resolution": "1k",
+      "channel": "Third-party",
+      "image1": [
+        "6",
+        0
+      ],
+      "image2": [
+        "7",
+        0
+      ]
+    },
+    "class_type": "RH_Nano_Banana2_Image2Image",
+    "_meta": {
+      "title": "RH Nano Banana2 pro Image2Image 🆕"
+    }
+  },
+  "6": {
+    "inputs": {
+      "image": "9a1c4eaad681d48710462c36e58b8b8d4169cdf96ee06bf7126ce6af5394b5c9.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "input:head_image:1"
+    }
+  },
+  "7": {
+    "inputs": {
+      "image": "5722dfa1ca4347db6475b2249de0a4707c426b181b437dc5f277644543ac8da3.jpg"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "input:cloth_image:2"
+    }
+  },
+  "9": {
+    "inputs": {
+      "rgthree_comparer": {
+        "images": [
+          {
+            "name": "A",
+            "selected": true,
+            "url": "/view?filename=rgthree.compare._temp_zmjta_00001_xsdzm_1764832914.jpg&type=temp&subfolder=&rand=0.14211273145461856&Rh-Comfy-Auth=eyJ1c2VySWQiOiI1M2Q5MTk2MmU5NWI2ZTYwNGNlYzMyMWQ3Y2U1MDU2MCIsInNpZ25FeHBpcmUiOjE3NjU0MzcyNjYwNDYsInRzIjoxNzY0ODMyNDY2MDQ2LCJzaWduIjoiZjlhOTcwNmEyYWVjOWU5NGZjZGE0ZTIyNjRkNDliNDIifQ==&Rh-Identify=53d91962e95b6e604cec321d7ce50560"
+          },
+          {
+            "name": "B",
+            "selected": true,
+            "url": "/view?filename=rgthree.compare._temp_zmjta_00002_fbgim_1764832915.jpg&type=temp&subfolder=&rand=0.4208131386993168&Rh-Comfy-Auth=eyJ1c2VySWQiOiI1M2Q5MTk2MmU5NWI2ZTYwNGNlYzMyMWQ3Y2U1MDU2MCIsInNpZ25FeHBpcmUiOjE3NjU0MzcyNjYwNDYsInRzIjoxNzY0ODMyNDY2MDQ2LCJzaWduIjoiZjlhOTcwNmEyYWVjOWU5NGZjZGE0ZTIyNjRkNDliNDIifQ==&Rh-Identify=53d91962e95b6e604cec321d7ce50560"
+          }
+        ]
+      },
+      "image_a": [
+        "4",
+        0
+      ],
+      "image_b": [
+        "7",
+        0
+      ]
+    },
+    "class_type": "Image Comparer (rgthree)",
+    "_meta": {
+      "title": "output:image_comparer:2"
+    }
+  },
+  "10": {
+    "inputs": {
+      "filename_prefix": "ComfyUI",
+      "images": [
+        "4",
+        0
+      ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "output:image:1"
+    }
+  }
+}

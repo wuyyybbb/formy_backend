@@ -76,8 +76,9 @@ async def create_user(
     avatar: Optional[str] = None,
     password_hash: Optional[str] = None,
     current_plan_id: Optional[str] = None,
-    current_credits: int = 0,
-    is_active: bool = True
+    current_credits: int = 100,  # 默认100积分（注册奖励）
+    is_active: bool = True,
+    signup_bonus_granted: bool = True  # 注册时默认已发放奖励
 ) -> User:
     """
     创建新用户
@@ -89,8 +90,9 @@ async def create_user(
         avatar: 头像 URL（可选）
         password_hash: 密码哈希值（可选）
         current_plan_id: 当前套餐 ID（可选）
-        current_credits: 初始算力（默认 0）
+        current_credits: 初始算力（默认 100，注册奖励）
         is_active: 是否激活（默认 True）
+        signup_bonus_granted: 注册奖励是否已发放（默认 True）
         
     Returns:
         User: 创建的用户对象
@@ -119,40 +121,92 @@ async def create_user(
     has_password = password_hash is not None
     
     async with pool.acquire() as conn:
-        await conn.execute(
+        # 首先检查表中是否存在 signup_bonus_granted 列
+        columns_exist = await conn.fetchval(
             """
-            INSERT INTO users (
+            SELECT EXISTS (
+                SELECT FROM information_schema.columns 
+                WHERE table_name = 'users' 
+                AND column_name = 'signup_bonus_granted'
+            )
+            """
+        )
+        
+        if columns_exist:
+            # 如果字段存在，包含 signup_bonus_granted
+            await conn.execute(
+                """
+                INSERT INTO users (
+                    user_id,
+                    email,
+                    username,
+                    avatar,
+                    created_at,
+                    last_login,
+                    is_active,
+                    password_hash,
+                    has_password,
+                    current_plan_id,
+                    current_credits,
+                    plan_renew_at,
+                    total_credits_used,
+                    signup_bonus_granted
+                ) VALUES (
+                    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14
+                )
+                """,
                 user_id,
                 email,
                 username,
                 avatar,
-                created_at,
-                last_login,
+                now,
+                now,
                 is_active,
                 password_hash,
                 has_password,
                 current_plan_id,
                 current_credits,
-                plan_renew_at,
-                total_credits_used
-            ) VALUES (
-                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13
+                None,
+                0,
+                signup_bonus_granted
             )
-            """,
-            user_id,
-            email,
-            username,
-            avatar,
-            now,
-            now,  # 创建时同时设置 last_login
-            is_active,
-            password_hash,
-            has_password,
-            current_plan_id,
-            current_credits,
-            None,  # plan_renew_at 初始为 None
-            0  # total_credits_used 初始为 0
-        )
+        else:
+            # 如果字段不存在，不包含 signup_bonus_granted（向后兼容）
+            print("⚠️  users 表中没有 signup_bonus_granted 字段，跳过该字段")
+            await conn.execute(
+                """
+                INSERT INTO users (
+                    user_id,
+                    email,
+                    username,
+                    avatar,
+                    created_at,
+                    last_login,
+                    is_active,
+                    password_hash,
+                    has_password,
+                    current_plan_id,
+                    current_credits,
+                    plan_renew_at,
+                    total_credits_used
+                ) VALUES (
+                    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13
+                )
+                """,
+                user_id,
+                email,
+                username,
+                avatar,
+                now,
+                now,
+                is_active,
+                password_hash,
+                has_password,
+                current_plan_id,
+                current_credits,
+                None,
+                0
+            )
     
     # 返回创建的用户对象
     return User(
@@ -170,6 +224,121 @@ async def create_user(
         plan_renew_at=None,
         total_credits_used=0
     )
+
+
+async def update_user_credits(
+    user_id: str,
+    credits_delta: int,
+    update_total_used: bool = False
+) -> bool:
+    """
+    更新用户积分
+    
+    Args:
+        user_id: 用户ID
+        credits_delta: 积分变化量（正数表示增加，负数表示扣除）
+        update_total_used: 是否同时更新 total_credits_used（扣除时为 True）
+        
+    Returns:
+        bool: 是否更新成功
+        
+    Raises:
+        Exception: 数据库连接错误
+    """
+    pool = get_pool()
+    if not pool:
+        raise Exception("数据库连接池未初始化")
+    
+    async with pool.acquire() as conn:
+        if update_total_used and credits_delta < 0:
+            # 扣除积分时，同时更新 total_credits_used
+            result = await conn.execute(
+                """
+                UPDATE users
+                SET 
+                    current_credits = current_credits + $1,
+                    total_credits_used = total_credits_used + $2
+                WHERE user_id = $3
+                """,
+                credits_delta,
+                abs(credits_delta),  # total_used 总是增加正数
+                user_id
+            )
+        else:
+            # 仅更新 current_credits（增加积分或不更新总使用量）
+            result = await conn.execute(
+                """
+                UPDATE users
+                SET current_credits = current_credits + $1
+                WHERE user_id = $2
+                """,
+                credits_delta,
+                user_id
+            )
+        
+        # 检查是否有行被更新
+        return result == "UPDATE 1"
+
+
+async def get_user_by_id(user_id: str) -> Optional[User]:
+    """
+    根据用户ID获取用户
+    
+    Args:
+        user_id: 用户ID
+        
+    Returns:
+        Optional[User]: 用户对象，如果不存在则返回 None
+        
+    Raises:
+        Exception: 数据库连接错误
+    """
+    pool = get_pool()
+    if not pool:
+        raise Exception("数据库连接池未初始化")
+    
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT 
+                user_id,
+                email,
+                username,
+                avatar,
+                created_at,
+                last_login,
+                is_active,
+                password_hash,
+                has_password,
+                current_plan_id,
+                current_credits,
+                plan_renew_at,
+                total_credits_used
+            FROM users
+            WHERE user_id = $1
+            """,
+            user_id
+        )
+        
+        if not row:
+            return None
+        
+        # 将数据库行转换为 User 对象
+        return User(
+            user_id=row['user_id'],
+            email=row['email'],
+            username=row['username'],
+            avatar=row['avatar'],
+            created_at=row['created_at'],
+            last_login=row['last_login'],
+            is_active=row['is_active'],
+            password_hash=row['password_hash'],
+            has_password=row['has_password'] if row['has_password'] is not None else (row['password_hash'] is not None),
+            current_plan_id=row['current_plan_id'],
+            current_credits=row['current_credits'] or 0,
+            plan_renew_at=row['plan_renew_at'],
+            total_credits_used=row['total_credits_used'] or 0
+        )
 
 
 async def verify_user(email: str, password_hash: str) -> Optional[User]:
