@@ -80,10 +80,54 @@ class HeadSwapPipeline(PipelineBase):
         Returns:
             bool: 是否有效
         """
-        # TODO: 实现验证逻辑
-        # - 检查源图片是否存在
-        # - 检查参考图片是否存在
-        # - 检查配置参数是否完整
+        print(f"[HeadSwapPipeline] 🔍 开始验证输入参数...")
+        print(f"  - source_image: {task_input.source_image}")
+        print(f"  - config: {task_input.config}")
+        
+        # 检查源图片是否存在
+        try:
+            source_path = resolve_uploaded_file(task_input.source_image)
+            print(f"  - 源图片解析路径: {source_path}")
+            if not source_path.exists():
+                self._log_step(ProcessingStep.LOAD_IMAGE, f"❌ 源图片不存在: {task_input.source_image}")
+                print(f"  ❌ 源图片文件不存在: {source_path}")
+                return False
+            print(f"  ✅ 源图片存在")
+        except Exception as e:
+            self._log_step(ProcessingStep.LOAD_IMAGE, f"❌ 无法解析源图片: {e}")
+            print(f"  ❌ 解析源图片失败: {e}")
+            return False
+        
+        # 检查配置中是否有服装图片
+        config = task_input.config or {}
+        cloth_image_id = config.get("cloth_image") or config.get("reference_image") or config.get("target_face_image")
+        print(f"  - 服装图片 ID: {cloth_image_id}")
+        if not cloth_image_id:
+            self._log_step(ProcessingStep.LOAD_IMAGE, "❌ 缺少服装图片")
+            print(f"  ❌ 配置中缺少服装图片")
+            return False
+        
+        # 检查服装图片是否存在
+        try:
+            cloth_path = resolve_uploaded_file(cloth_image_id)
+            print(f"  - 服装图片解析路径: {cloth_path}")
+            if not cloth_path.exists():
+                self._log_step(ProcessingStep.LOAD_IMAGE, f"❌ 服装图片不存在: {cloth_image_id}")
+                print(f"  ❌ 服装图片文件不存在: {cloth_path}")
+                return False
+            print(f"  ✅ 服装图片存在")
+        except Exception as e:
+            self._log_step(ProcessingStep.LOAD_IMAGE, f"❌ 无法解析服装图片: {e}")
+            print(f"  ❌ 解析服装图片失败: {e}")
+            return False
+        
+        # 检查 Engine 是否可用
+        if not self.runninghub_engine:
+            self._log_step(ProcessingStep.COMPLETE, "❌ 换头 Engine 未配置（需要 RunningHub）")
+            print(f"  ❌ RunningHub Engine 未配置")
+            return False
+        
+        print(f"[HeadSwapPipeline] ✅ 输入参数验证通过")
         return True
     
     def _parse_config(self, config: dict) -> HeadSwapConfig:
@@ -96,8 +140,16 @@ class HeadSwapPipeline(PipelineBase):
         Returns:
             HeadSwapConfig: 配置对象
         """
-        # TODO: 实现配置解析
-        return HeadSwapConfig(**config)
+        # 从配置中提取服装图片（兼容多种字段名）
+        cloth_image = config.get("cloth_image") or config.get("reference_image") or config.get("target_face_image")
+        
+        return HeadSwapConfig(
+            cloth_image=cloth_image,
+            reference_image=cloth_image,
+            quality=config.get("quality", "high"),
+            preserve_details=config.get("preserve_details", True),
+            blend_strength=config.get("blend_strength", 0.8)
+        )
     
     def _run_head_swap_workflow(
         self, 
@@ -129,6 +181,27 @@ class HeadSwapPipeline(PipelineBase):
                     error_code=TaskErrorCode.INVALID_REQUEST.value
                 )
             cloth_image_path = resolve_uploaded_file(cloth_image_id)
+            
+            # 🔍 详细日志：确认图片路径
+            print(f"[HeadSwapPipeline] 🔍 输入参数:")
+            print(f"  - source_image (file_id): {source_image}")
+            print(f"  - cloth_image (file_id): {cloth_image_id}")
+            print(f"[HeadSwapPipeline] 🔍 解析后的本地路径:")
+            print(f"  - head_image_path: {head_image_path}")
+            print(f"  - cloth_image_path: {cloth_image_path}")
+            
+            # 验证文件是否存在
+            import os
+            if not os.path.exists(head_image_path):
+                print(f"[HeadSwapPipeline] ❌ 头部图片不存在: {head_image_path}")
+            else:
+                print(f"[HeadSwapPipeline] ✅ 头部图片存在，大小: {os.path.getsize(head_image_path)} bytes")
+            
+            if not os.path.exists(cloth_image_path):
+                print(f"[HeadSwapPipeline] ❌ 服装图片不存在: {cloth_image_path}")
+            else:
+                print(f"[HeadSwapPipeline] ✅ 服装图片存在，大小: {os.path.getsize(cloth_image_path)} bytes")
+                
         except Exception as e:
             return self._create_error_result(
                 f"加载图片失败: {e}",

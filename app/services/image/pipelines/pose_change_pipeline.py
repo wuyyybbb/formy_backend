@@ -81,38 +81,54 @@ class PoseChangePipeline(PipelineBase):
         Returns:
             bool: 是否有效
         """
+        print(f"[PoseChangePipeline] 🔍 开始验证输入参数...")
+        print(f"  - source_image: {task_input.source_image}")
+        print(f"  - config: {task_input.config}")
+        
         # 检查源图片是否存在
         try:
             source_path = resolve_uploaded_file(task_input.source_image)
+            print(f"  - 源图片解析路径: {source_path}")
             if not source_path.exists():
-                self._log_step(ProcessingStep.LOAD_IMAGE, f"源图片不存在: {task_input.source_image}")
+                self._log_step(ProcessingStep.LOAD_IMAGE, f"❌ 源图片不存在: {task_input.source_image}")
+                print(f"  ❌ 源图片文件不存在: {source_path}")
                 return False
+            print(f"  ✅ 源图片存在")
         except Exception as e:
-            self._log_step(ProcessingStep.LOAD_IMAGE, f"无法解析源图片: {e}")
+            self._log_step(ProcessingStep.LOAD_IMAGE, f"❌ 无法解析源图片: {e}")
+            print(f"  ❌ 解析源图片失败: {e}")
             return False
         
         # 检查配置中是否有姿势参考图
         config = task_input.config or {}
-        pose_image_id = config.get("pose_image") or config.get("reference_image")
+        pose_image_id = config.get("pose_image") or config.get("pose_reference") or config.get("reference_image")
+        print(f"  - 姿势参考图 ID: {pose_image_id}")
         if not pose_image_id:
-            self._log_step(ProcessingStep.LOAD_IMAGE, "缺少姿势参考图")
+            self._log_step(ProcessingStep.LOAD_IMAGE, "❌ 缺少姿势参考图")
+            print(f"  ❌ 配置中缺少姿势参考图")
             return False
         
         # 检查姿势参考图是否存在
         try:
             pose_path = resolve_uploaded_file(pose_image_id)
+            print(f"  - 姿势参考图解析路径: {pose_path}")
             if not pose_path.exists():
-                self._log_step(ProcessingStep.LOAD_IMAGE, f"姿势参考图不存在: {pose_image_id}")
+                self._log_step(ProcessingStep.LOAD_IMAGE, f"❌ 姿势参考图不存在: {pose_image_id}")
+                print(f"  ❌ 姿势参考图文件不存在: {pose_path}")
                 return False
+            print(f"  ✅ 姿势参考图存在")
         except Exception as e:
-            self._log_step(ProcessingStep.LOAD_IMAGE, f"无法解析姿势参考图: {e}")
+            self._log_step(ProcessingStep.LOAD_IMAGE, f"❌ 无法解析姿势参考图: {e}")
+            print(f"  ❌ 解析姿势参考图失败: {e}")
             return False
         
         # 检查 Engine 是否可用
         if not self.comfyui_engine:
-            self._log_step(ProcessingStep.COMPLETE, "姿势迁移 Engine 未配置（需要 RunningHub 或 ComfyUI）")
+            self._log_step(ProcessingStep.COMPLETE, "❌ 姿势迁移 Engine 未配置（需要 RunningHub 或 ComfyUI）")
+            print(f"  ❌ RunningHub/ComfyUI Engine 未配置")
             return False
         
+        print(f"[PoseChangePipeline] ✅ 输入参数验证通过")
         return True
     
     def _parse_config(self, config: dict) -> PoseChangeConfig:
@@ -125,8 +141,8 @@ class PoseChangePipeline(PipelineBase):
         Returns:
             PoseChangeConfig: 配置对象
         """
-        # 从配置中提取姿势参考图
-        pose_image_id = config.get("pose_image") or config.get("reference_image")
+        # 从配置中提取姿势参考图（兼容多种字段名）
+        pose_image_id = config.get("pose_reference") or config.get("pose_image") or config.get("reference_image")
         
         return PoseChangeConfig(
             pose_reference=pose_image_id,
@@ -158,6 +174,27 @@ class PoseChangePipeline(PipelineBase):
         try:
             source_path = resolve_uploaded_file(source_image)
             pose_path = resolve_uploaded_file(config.pose_reference)
+            
+            # 🔍 详细日志：确认图片路径
+            print(f"[PoseChangePipeline] 🔍 输入参数:")
+            print(f"  - source_image (file_id): {source_image}")
+            print(f"  - pose_reference (file_id): {config.pose_reference}")
+            print(f"[PoseChangePipeline] 🔍 解析后的本地路径:")
+            print(f"  - source_path: {source_path}")
+            print(f"  - pose_path: {pose_path}")
+            
+            # 验证文件是否存在
+            import os
+            if not os.path.exists(source_path):
+                print(f"[PoseChangePipeline] ❌ 源图片不存在: {source_path}")
+            else:
+                print(f"[PoseChangePipeline] ✅ 源图片存在，大小: {os.path.getsize(source_path)} bytes")
+            
+            if not os.path.exists(pose_path):
+                print(f"[PoseChangePipeline] ❌ 姿势参考图不存在: {pose_path}")
+            else:
+                print(f"[PoseChangePipeline] ✅ 姿势参考图存在，大小: {os.path.getsize(pose_path)} bytes")
+                
         except Exception as e:
             return self._create_error_result(
                 f"加载图片失败: {e}",
