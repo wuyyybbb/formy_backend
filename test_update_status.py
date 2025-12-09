@@ -14,7 +14,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 os.environ.setdefault('DATABASE_URL', os.getenv('DATABASE_URL', 'postgresql://'))
 
 from app.db import connect_to_db, close_db_connection, crud_tasks
-from app.models.task import TaskStatus
+from app.schemas.task import TaskStatus
 import uuid
 
 async def test_update_status():

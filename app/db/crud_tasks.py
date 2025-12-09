@@ -294,15 +294,18 @@ async def update_task_status(
     
     set_clause = ", ".join(update_fields)
     
+    sql_query = f"""
+    UPDATE tasks
+    SET {set_clause}
+    WHERE task_id = $1
+    """
+    
     async with pool.acquire() as conn:
-        result = await conn.execute(
-            f"""
-            UPDATE tasks
-            SET {set_clause}
-            WHERE task_id = $1
-            """,
-            *params
-        )
+        print(f"[CRUD] 🔍 执行 SQL 更新:")
+        print(f"[CRUD]    SQL: {sql_query.strip()}")
+        print(f"[CRUD]    参数: {[task_id, status, *params[3:]]}")
+        
+        result = await conn.execute(sql_query, *params)
         
         # 检查是否有行被更新
         print(f"[CRUD] 📝 更新任务状态: task_id={task_id}, status={status}")
