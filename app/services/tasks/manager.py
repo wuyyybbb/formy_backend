@@ -212,13 +212,13 @@ class TaskService:
         
         return success
     
-    def complete_task(
+    async def complete_task(
         self, 
         task_id: str, 
         result: dict
     ) -> bool:
         """
-        标记任务完成
+        标记任务完成（异步版本）
         
         Args:
             task_id: 任务ID
@@ -227,36 +227,46 @@ class TaskService:
         Returns:
             bool: 是否成功
         """
-        # 更新数据库
-        success = asyncio.run(crud_tasks.update_task_status(
-            task_id=task_id,
-            status=TaskStatus.DONE.value,
-            progress=100,
-            result=result
-        ))
-        
-        # 同时更新 Redis（用于兼容性，可选）
-        self.queue.update_task_status(
-            task_id=task_id,
-            status="done",
-            progress=100,
-            result=result
-        )
-        
-        return success
+        try:
+            # 更新数据库
+            success = await crud_tasks.update_task_status(
+                task_id=task_id,
+                status=TaskStatus.DONE.value,
+                progress=100,
+                result=result
+            )
+            
+            # 同时更新 Redis（用于兼容性，可选）
+            self.queue.update_task_status(
+                task_id=task_id,
+                status="done",
+                progress=100,
+                result=result
+            )
+            
+            return success
+        except Exception as e:
+            print(f"[TaskService] ❌ 标记任务完成失败: {e}")
+            import traceback
+            traceback.print_exc()
+            raise
     
-    def fail_task(
+    async def fail_task(
         self, 
-        task_id: str, 
-        error_code: str,
-        error_message: str,
+        task_id: str,
+        user_id: Optional[str] = None,
+        credits_consumed: Optional[int] = None,
+        error_code: str = "UNKNOWN_ERROR",
+        error_message: str = "未知错误",
         error_details: Optional[str] = None
     ) -> bool:
         """
-        标记任务失败
+        标记任务失败（异步版本）
         
         Args:
             task_id: 任务ID
+            user_id: 用户ID（用于退款）
+            credits_consumed: 消耗的积分（用于退款）
             error_code: 错误码
             error_message: 错误信息
             error_details: 错误详情
@@ -264,30 +274,65 @@ class TaskService:
         Returns:
             bool: 是否成功
         """
-        error = {
-            "code": error_code,
-            "message": error_message,
-            "details": error_details
-        }
+        try:
+            error = {
+                "code": error_code,
+                "message": error_message,
+                "details": error_details
+            }
+            
+            # 退款（如果提供了用户和积分信息）
+            if user_id and credits_consumed:
+                await self._refund_credits_async(task_id, user_id, credits_consumed)
+            
+            # 更新数据库
+            success = await crud_tasks.update_task_status(
+                task_id=task_id,
+                status=TaskStatus.FAILED.value,
+                error=error
+            )
+            
+            # 同时更新 Redis（用于兼容性，可选）
+            self.queue.update_task_status(
+                task_id=task_id,
+                status="failed",
+                error=error
+            )
+            
+            return success
+        except Exception as e:
+            print(f"[TaskService] ❌ 标记任务失败时出错: {e}")
+            import traceback
+            traceback.print_exc()
+            raise
+    
+    async def _refund_credits_async(self, task_id: str, user_id: str, credits: int) -> bool:
+        """
+        异步退款功能
         
-        # Refund credits if task fails
-        self.refund_credits_for_failed_task(task_id)
-        
-        # 更新数据库
-        success = asyncio.run(crud_tasks.update_task_status(
-            task_id=task_id,
-            status=TaskStatus.FAILED.value,
-            error=error
-        ))
-        
-        # 同时更新 Redis（用于兼容性，可选）
-        self.queue.update_task_status(
-            task_id=task_id,
-            status="failed",
-            error=error
-        )
-        
-        return success
+        Args:
+            task_id: 任务ID
+            user_id: 用户ID
+            credits: 退款积分数
+            
+        Returns:
+            bool: 是否成功
+        """
+        try:
+            from app.services.billing import billing_service
+            success = billing_service.add_credits(user_id, credits)
+            
+            if success:
+                print(f"[TaskService] ✅ 已为用户 {user_id} 退款 {credits} 积分（任务 {task_id} 失败）")
+            else:
+                print(f"[TaskService] ❌ 为用户 {user_id} 退款 {credits} 积分失败")
+            
+            return success
+        except Exception as e:
+            print(f"[TaskService] ❌ 退款异常: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
     
     def refund_credits_for_failed_task(self, task_id: str) -> bool:
         """

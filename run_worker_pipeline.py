@@ -5,6 +5,7 @@ Pipeline Worker - 调用真实的 Pipeline 处理任务
 import time
 import signal
 import sys
+import asyncio
 from typing import Optional
 from pathlib import Path
 
@@ -16,10 +17,11 @@ from app.services.image.pipelines.head_swap_pipeline import HeadSwapPipeline
 from app.services.image.pipelines.background_pipeline import BackgroundPipeline
 from app.services.image.dto import EditTaskInput
 from app.core.error_codes import TaskErrorCode, create_error
+from app.db import init_db_pool, close_db_pool
 
 
 class PipelineWorker:
-    """Pipeline Worker 类 - 调用真实 Pipeline"""
+    """Pipeline Worker 类 - 调用真实 Pipeline（异步版本）"""
     
     def __init__(self):
         """初始化 Worker"""
@@ -35,6 +37,12 @@ class PipelineWorker:
         
         print("[Worker] Pipeline Worker 初始化完成")
     
+    async def async_init(self):
+        """异步初始化 - 初始化数据库连接池"""
+        print("[Worker] 正在初始化数据库连接池...")
+        await init_db_pool()
+        print("[Worker] ✅ 数据库连接池初始化成功")
+    
     def _setup_signal_handlers(self):
         """设置信号处理器（优雅关闭）"""
         signal.signal(signal.SIGINT, self._handle_shutdown)
@@ -45,8 +53,8 @@ class PipelineWorker:
         print("\n[Worker] 接收到关闭信号，正在停止...")
         self.is_running = False
     
-    def start(self):
-        """启动 Worker 循环"""
+    async def start(self):
+        """启动 Worker 循环（异步版本）"""
         print("[Worker] Pipeline Worker 已启动，等待任务...")
         print("[Worker] 会调用真实的 Pipeline 处理任务（RunningHub / ComfyUI）")
         print("[Worker] 按 Ctrl+C 停止\n")
@@ -75,8 +83,8 @@ class PipelineWorker:
                     except Exception as e:
                         print(f"[Worker] ⚠️  更新任务状态失败: {e}")
                     
-                    # 处理任务
-                    self._process_task(task_id)
+                    # 异步处理任务
+                    await self._process_task(task_id)
                 else:
                     # 超时未获取到任务，继续循环
                     continue
@@ -98,9 +106,9 @@ class PipelineWorker:
         
         print("[Worker] Pipeline Worker 已停止")
     
-    def _process_task(self, task_id: str):
+    async def _process_task(self, task_id: str):
         """
-        处理单个任务
+        处理单个任务（异步版本）
         
         Args:
             task_id: 任务ID
@@ -118,13 +126,17 @@ class PipelineWorker:
             mode = input_data.get("mode")
             source_image = input_data.get("source_image")
             config = input_data.get("config", {})
+            user_id = input_data.get("user_id")
+            credits_consumed = input_data.get("credits_consumed")
             
             print(f"[Worker] 📋 任务模式: {mode}")
             print(f"[Worker] 🖼️  原始图片: {source_image}")
             print(f"[Worker] ⚙️  配置: {config}")
+            print(f"[Worker] 👤 用户: {user_id}")
+            print(f"[Worker] 💰 消耗算力: {credits_consumed}")
             
             # 分发到对应的 Pipeline
-            result = self._dispatch_to_pipeline(
+            result = await self._dispatch_to_pipeline(
                 task_id=task_id,
                 mode=mode,
                 source_image=source_image,
@@ -140,7 +152,7 @@ class PipelineWorker:
                 print(f"[Worker] 📋 完整结果: {result}")
                 
                 try:
-                    success = self.task_service.complete_task(
+                    success = await self.task_service.complete_task(
                         task_id=task_id,
                         result=result  # 传入完整的 result 字典
                     )
@@ -154,30 +166,41 @@ class PipelineWorker:
                 # Pipeline 返回 None，表示失败（错误已在 Pipeline 中记录）
                 print(f"[Worker] ❌ 任务处理失败")
                 
-                # 如果任务状态还不是 failed，标记为失败
-                task_info = self.task_service.get_task(task_id)
-                if task_info and task_info.status != TaskStatus.FAILED:
-                    self.task_service.fail_task(
+                # 标记为失败并退款
+                try:
+                    await self.task_service.fail_task(
                         task_id=task_id,
+                        user_id=user_id,
+                        credits_consumed=credits_consumed,
                         error_code="PIPELINE_ERROR",
                         error_message="Pipeline 处理失败",
                         error_details="Pipeline 返回空结果"
                     )
-                
-                print(f"[Worker] 任务失败: {task_id}")
+                    print(f"[Worker] ✅ 任务失败且已退款: {task_id}")
+                except Exception as e:
+                    print(f"[Worker] ❌ 标记任务失败或退款时出错: {e}")
+                    import traceback
+                    traceback.print_exc()
                 
         except Exception as e:
             print(f"[Worker] 处理任务异常: {task_id}, 错误: {e}")
+            import traceback
+            traceback.print_exc()
             
-            # 标记任务失败
-            self.task_service.fail_task(
-                task_id=task_id,
-                error_code="INTERNAL_ERROR",
-                error_message="任务处理过程中发生异常",
-                error_details=str(e)
-            )
+            # 尝试标记任务失败并退款
+            try:
+                await self.task_service.fail_task(
+                    task_id=task_id,
+                    user_id=input_data.get("user_id") if 'input_data' in locals() else None,
+                    credits_consumed=input_data.get("credits_consumed") if 'input_data' in locals() else None,
+                    error_code="INTERNAL_ERROR",
+                    error_message="任务处理过程中发生异常",
+                    error_details=str(e)
+                )
+            except Exception as refund_error:
+                print(f"[Worker] ❌ 退款失败: {refund_error}")
     
-    def _dispatch_to_pipeline(
+    async def _dispatch_to_pipeline(
         self,
         task_id: str,
         mode: str,
@@ -185,7 +208,7 @@ class PipelineWorker:
         config: dict
     ) -> Optional[dict]:
         """
-        分发任务到对应的 Pipeline
+        分发任务到对应的 Pipeline（异步版本）
         
         Args:
             task_id: 任务ID
@@ -201,11 +224,11 @@ class PipelineWorker:
             
             # 根据模式调用对应的 Pipeline
             if mode == EditMode.POSE_CHANGE.value:
-                return self._process_pose_change(task_id, source_image, config)
+                return await self._process_pose_change(task_id, source_image, config)
             elif mode == EditMode.HEAD_SWAP.value:
-                return self._process_head_swap(task_id, source_image, config)
+                return await self._process_head_swap(task_id, source_image, config)
             elif mode == EditMode.BACKGROUND_CHANGE.value:
-                return self._process_background_change(task_id, source_image, config)
+                return await self._process_background_change(task_id, source_image, config)
             else:
                 print(f"[Worker] ❌ 不支持的编辑模式: {mode}")
                 return None
@@ -216,7 +239,7 @@ class PipelineWorker:
             traceback.print_exc()
             return None
     
-    def _process_pose_change(
+    async def _process_pose_change(
         self, 
         task_id: str, 
         source_image: str, 
@@ -226,10 +249,10 @@ class PipelineWorker:
         print(f"[Worker] 🎨 开始执行换姿势 Pipeline...")
         
         try:
-            # 进度回调函数
-            def progress_callback(progress: int, message: str):
+            # 进度回调函数（异步版本）
+            async def progress_callback(progress: int, message: str):
                 try:
-                    self.task_service.update_task_progress(task_id, progress, message)
+                    await self.task_service.update_task_progress(task_id, progress, message)
                     print(f"[Worker] 📊 进度: {progress}% - {message}")
                 except Exception as e:
                     print(f"[Worker] ⚠️  更新进度失败: {e}")
@@ -243,7 +266,7 @@ class PipelineWorker:
                 progress_callback=progress_callback
             )
             
-            # 执行 Pipeline
+            # 执行 Pipeline（Pipeline 本身是同步的，所以直接调用）
             result = self.pose_pipeline.execute(task_input)
             
             # 检查结果
@@ -263,7 +286,7 @@ class PipelineWorker:
             traceback.print_exc()
             return None
     
-    def _process_head_swap(
+    async def _process_head_swap(
         self, 
         task_id: str, 
         source_image: str, 
@@ -273,10 +296,10 @@ class PipelineWorker:
         print(f"[Worker] 🎭 开始执行换头 Pipeline...")
         
         try:
-            # 进度回调函数
-            def progress_callback(progress: int, message: str):
+            # 进度回调函数（异步版本）
+            async def progress_callback(progress: int, message: str):
                 try:
-                    self.task_service.update_task_progress(task_id, progress, message)
+                    await self.task_service.update_task_progress(task_id, progress, message)
                     print(f"[Worker] 📊 进度: {progress}% - {message}")
                 except Exception as e:
                     print(f"[Worker] ⚠️  更新进度失败: {e}")
@@ -310,7 +333,7 @@ class PipelineWorker:
             traceback.print_exc()
             return None
     
-    def _process_background_change(
+    async def _process_background_change(
         self, 
         task_id: str, 
         source_image: str, 
@@ -320,10 +343,10 @@ class PipelineWorker:
         print(f"[Worker] 🌄 开始执行换背景 Pipeline...")
         
         try:
-            # 进度回调函数
-            def progress_callback(progress: int, message: str):
+            # 进度回调函数（异步版本）
+            async def progress_callback(progress: int, message: str):
                 try:
-                    self.task_service.update_task_progress(task_id, progress, message)
+                    await self.task_service.update_task_progress(task_id, progress, message)
                     print(f"[Worker] 📊 进度: {progress}% - {message}")
                 except Exception as e:
                     print(f"[Worker] ⚠️  更新进度失败: {e}")
@@ -363,16 +386,37 @@ class PipelineWorker:
             return None
 
 
-def run_pipeline_worker():
-    """运行 Pipeline Worker（入口函数）"""
+async def run_pipeline_worker():
+    """运行 Pipeline Worker（异步入口函数）"""
     print("="*60)
     print("Formy Pipeline Worker")
     print("="*60)
     
     worker = PipelineWorker()
-    worker.start()
+    
+    # 初始化数据库连接池
+    try:
+        await worker.async_init()
+    except Exception as e:
+        print(f"[Worker] ❌ 初始化失败: {e}")
+        import traceback
+        traceback.print_exc()
+        return
+    
+    # 启动 Worker 循环
+    try:
+        await worker.start()
+    except KeyboardInterrupt:
+        print("\n[Worker] 收到中断信号，正在关闭...")
+    finally:
+        # 清理资源
+        try:
+            await close_db_pool()
+            print("[Worker] ✅ 数据库连接池已关闭")
+        except Exception as e:
+            print(f"[Worker] ⚠️  关闭数据库连接池时出错: {e}")
 
 
 if __name__ == "__main__":
-    run_pipeline_worker()
+    asyncio.run(run_pipeline_worker())
 
