@@ -305,7 +305,13 @@ async def update_task_status(
         )
         
         # 检查是否有行被更新
-        return result == "UPDATE 1"
+        print(f"[CRUD] 📝 更新任务状态: task_id={task_id}, status={status}")
+        print(f"[CRUD] 🔍 execute 返回值: type={type(result)}, value={repr(result)}")
+        
+        success = result == "UPDATE 1"
+        print(f"[CRUD] {'✅' if success else '❌'} 更新结果: {success}")
+        
+        return success
 
 
 async def delete_task(task_id: str) -> bool:

@@ -229,12 +229,14 @@ class TaskService:
         """
         try:
             # 更新数据库
+            print(f"[TaskService] 📝 开始标记任务为完成: {task_id}")
             success = await crud_tasks.update_task_status(
                 task_id=task_id,
                 status=TaskStatus.DONE.value,
                 progress=100,
                 result=result
             )
+            print(f"[TaskService] 📊 update_task_status 返回值: {success}")
             
             # 同时更新 Redis（用于兼容性，可选）
             self.queue.update_task_status(
@@ -244,6 +246,7 @@ class TaskService:
                 result=result
             )
             
+            print(f"[TaskService] {'✅' if success else '❌'} 任务完成标记: {success}")
             return success
         except Exception as e:
             print(f"[TaskService] ❌ 标记任务完成失败: {e}")
