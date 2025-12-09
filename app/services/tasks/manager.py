@@ -200,7 +200,7 @@ class TaskService:
             status=TaskStatus.PROCESSING.value,
             progress=progress,
             current_step=current_step
-        ))
+        )
         
         # 同时更新 Redis（用于兼容性，可选）
         self.queue.update_task_status(
