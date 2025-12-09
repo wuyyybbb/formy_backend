@@ -3,6 +3,7 @@
 """
 import random
 import string
+import uuid
 from datetime import datetime, timedelta
 from typing import Optional, Dict
 import redis
@@ -268,6 +269,53 @@ class AuthService:
         )
         
         return encoded_jwt
+
+    # ----------------- Refresh Token -----------------
+    def create_refresh_token(self, user_id: str) -> str:
+        """
+        创建并保存 refresh token（随机字符串），存储到 Redis
+        Returns: refresh_token string
+        """
+        try:
+            token = uuid.uuid4().hex
+            key = f"refresh_token:{token}"
+            data = {
+                "user_id": user_id,
+                "created_at": datetime.utcnow().isoformat()
+            }
+            expiry_seconds = settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 3600
+            self.redis_client.setex(key, expiry_seconds, json.dumps(data, ensure_ascii=False))
+            return token
+        except Exception as e:
+            print(f"创建 refresh token 失败: {e}")
+            raise
+
+    def verify_refresh_token(self, token: str) -> Optional[str]:
+        """
+        验证 refresh token 是否存在且未过期，返回关联的 user_id 或 None
+        """
+        try:
+            key = f"refresh_token:{token}"
+            data_str = self.redis_client.get(key)
+            if not data_str:
+                return None
+            data = json.loads(data_str)
+            return data.get("user_id")
+        except Exception as e:
+            print(f"验证 refresh token 失败: {e}")
+            return None
+
+    def revoke_refresh_token(self, token: str) -> bool:
+        """
+        撤销（删除） refresh token
+        """
+        try:
+            key = f"refresh_token:{token}"
+            self.redis_client.delete(key)
+            return True
+        except Exception as e:
+            print(f"撤销 refresh token 失败: {e}")
+            return False
     
     def decode_access_token(self, token: str) -> Optional[Dict]:
         """
@@ -289,6 +337,26 @@ class AuthService:
         except JWTError as e:
             print(f"JWT 解码失败: {e}")
             return None
+
+    def decode_access_token_verbose(self, token: str) -> tuple[Optional[Dict], Optional[str]]:
+        """
+        解码访问令牌并返回 (payload, error_message)
+
+        Returns:
+            (payload, None) if successful
+            (None, error_message) if failed
+        """
+        try:
+            payload = jwt.decode(
+                token,
+                self.jwt_secret,
+                algorithms=[self.jwt_algorithm]
+            )
+            return payload, None
+        except JWTError as e:
+            err = str(e)
+            print(f"JWT 解码失败（详细）: {err}")
+            return None, err
     
     def hash_password(self, password: str) -> str:
         """
@@ -457,11 +525,19 @@ async def get_current_user_id(
         )
     
     token = credentials.credentials
-    
-    # 解码 token
+
+    # 解码 token（获取详细错误信息以便返回更明确的提示）
     auth_service = get_auth_service()
-    payload = auth_service.decode_access_token(token)
-    
+    payload, err = auth_service.decode_access_token_verbose(token)
+
+    if err:
+        # 返回更明确的错误原因（如过期、签名无效等）
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"无效的认证凭据: {err}",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
     if not payload:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

@@ -1,7 +1,7 @@
 """
 认证相关路由
 """
-from fastapi import APIRouter, HTTPException, Depends, Header
+from fastapi import APIRouter, HTTPException, Depends, Header, Request, Response
 from typing import Optional
 
 from app.schemas.auth import (
@@ -15,7 +15,9 @@ from app.schemas.auth import (
     SetPasswordResponse,
     PasswordLoginRequest,
     SignupRequest,
-    SignupResponse
+    SignupResponse,
+    RefreshRequest,
+    RefreshResponse
 )
 from app.services.auth.auth_service import get_auth_service
 from app.services.email.email_factory import get_email_service
@@ -113,7 +115,7 @@ async def send_verification_code(request: SendCodeRequest):
 
 
 @router.post("/auth/login", response_model=LoginResponse)
-async def login_with_code(request: LoginRequest):
+async def login_with_code(request: LoginRequest, response: Response):
     """
     API 2: 验证码登录
     
@@ -135,8 +137,27 @@ async def login_with_code(request: LoginRequest):
         
         # 创建访问令牌
         access_token = auth_service.create_access_token(user)
-        
-        # 返回用户信息和令牌
+        # 创建 refresh token 并保存
+        try:
+            refresh_token = auth_service.create_refresh_token(user.user_id)
+        except Exception:
+            refresh_token = None
+
+        # 将 refresh_token 以 HttpOnly cookie 的形式写入（如果创建成功）
+        if refresh_token:
+            from app.core.config import settings
+            secure = settings.REFRESH_TOKEN_COOKIE_SECURE and not settings.DEBUG
+            response.set_cookie(
+                key=settings.REFRESH_TOKEN_COOKIE_NAME,
+                value=refresh_token,
+                httponly=settings.REFRESH_TOKEN_COOKIE_HTTPONLY,
+                secure=secure,
+                samesite=settings.REFRESH_TOKEN_COOKIE_SAMESITE,
+                path=settings.REFRESH_TOKEN_COOKIE_PATH,
+                max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 3600,
+            )
+
+        # 返回用户信息和 access token（不在响应体中包含 refresh_token）
         return LoginResponse(
             access_token=access_token,
             token_type="bearer",
@@ -179,10 +200,16 @@ async def get_current_user(authorization: Optional[str] = Header(None)):
                 detail="无效的认证方案"
             )
         
-        # 解码 JWT
+        # 解码 JWT（获取详细错误信息以便返回更明确的提示）
         auth_service = get_auth_service()
-        payload = auth_service.decode_access_token(token)
-        
+        payload, err = auth_service.decode_access_token_verbose(token)
+
+        if err:
+            raise HTTPException(
+                status_code=401,
+                detail=f"无效的令牌: {err}"
+            )
+
         if not payload:
             raise HTTPException(
                 status_code=401,
@@ -277,7 +304,7 @@ async def set_password(
 
 
 @router.post("/auth/login-password", response_model=LoginResponse)
-async def login_with_password(request: PasswordLoginRequest):
+async def login_with_password(request: PasswordLoginRequest, response: Response):
     """
     API 5: 密码登录
     
@@ -298,8 +325,25 @@ async def login_with_password(request: PasswordLoginRequest):
         
         # 创建访问令牌
         access_token = auth_service.create_access_token(user)
-        
-        # 返回用户信息和令牌
+        try:
+            refresh_token = auth_service.create_refresh_token(user.user_id)
+        except Exception:
+            refresh_token = None
+
+        # 将 refresh_token 写入 HttpOnly cookie
+        if refresh_token:
+            from app.core.config import settings
+            secure = settings.REFRESH_TOKEN_COOKIE_SECURE and not settings.DEBUG
+            response.set_cookie(
+                key=settings.REFRESH_TOKEN_COOKIE_NAME,
+                value=refresh_token,
+                httponly=settings.REFRESH_TOKEN_COOKIE_HTTPONLY,
+                secure=secure,
+                samesite=settings.REFRESH_TOKEN_COOKIE_SAMESITE,
+                path=settings.REFRESH_TOKEN_COOKIE_PATH,
+                max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 3600,
+            )
+
         return LoginResponse(
             access_token=access_token,
             token_type="bearer",
@@ -324,7 +368,7 @@ async def login_with_password(request: PasswordLoginRequest):
 
 
 @router.post("/auth/signup", response_model=SignupResponse)
-async def signup(request: SignupRequest):
+async def signup(request: SignupRequest, response: Response):
     """
     注册新用户（使用 PostgreSQL）
     
@@ -379,8 +423,25 @@ async def signup(request: SignupRequest):
         
         # 创建访问令牌
         access_token = auth_service.create_access_token(new_user)
-        
-        # 返回用户信息和令牌
+        try:
+            refresh_token = auth_service.create_refresh_token(new_user.user_id)
+        except Exception:
+            refresh_token = None
+
+        # 将 refresh_token 写入 HttpOnly cookie（如果创建成功）
+        if refresh_token:
+            from app.core.config import settings
+            secure = settings.REFRESH_TOKEN_COOKIE_SECURE and not settings.DEBUG
+            response.set_cookie(
+                key=settings.REFRESH_TOKEN_COOKIE_NAME,
+                value=refresh_token,
+                httponly=settings.REFRESH_TOKEN_COOKIE_HTTPONLY,
+                secure=secure,
+                samesite=settings.REFRESH_TOKEN_COOKIE_SAMESITE,
+                path=settings.REFRESH_TOKEN_COOKIE_PATH,
+                max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 3600,
+            )
+
         return SignupResponse(
             success=True,
             message="注册成功！您已获得 100 算力奖励",
@@ -494,6 +555,78 @@ async def login_with_password_db(request: PasswordLoginRequest):
         )
 
 
+
+@router.post("/auth/refresh", response_model=RefreshResponse)
+async def refresh_token_endpoint(req: Request, response: Response, payload: Optional[RefreshRequest] = None):
+    """
+    使用 refresh_token（优先从 HttpOnly cookie）获取新的 access_token，并旋转 refresh_token
+    """
+    try:
+        auth_service = get_auth_service()
+        from app.core.config import settings
+
+        # 优先从 cookie 中读取 refresh_token；若不存在则从 body 中读取
+        old_refresh = None
+        if settings.REFRESH_TOKEN_COOKIE_NAME in req.cookies:
+            old_refresh = req.cookies.get(settings.REFRESH_TOKEN_COOKIE_NAME)
+        if not old_refresh and payload is not None:
+            old_refresh = payload.refresh_token
+
+        if not old_refresh:
+            raise HTTPException(status_code=401, detail="缺少 refresh_token")
+
+        user_id = auth_service.verify_refresh_token(old_refresh)
+        if not user_id:
+            # 清除 cookie
+            response.delete_cookie(key=settings.REFRESH_TOKEN_COOKIE_NAME, path=settings.REFRESH_TOKEN_COOKIE_PATH)
+            raise HTTPException(status_code=401, detail="无效或已过期的 refresh_token")
+
+        # 获取用户
+        user = auth_service.get_user_by_id(user_id)
+        if not user:
+            response.delete_cookie(key=settings.REFRESH_TOKEN_COOKIE_NAME, path=settings.REFRESH_TOKEN_COOKIE_PATH)
+            raise HTTPException(status_code=401, detail="refresh_token 对应的用户不存在")
+
+        # 生成新的 access token
+        access_token = auth_service.create_access_token(user)
+
+        # 旋转 refresh token：撤销旧的、创建新的
+        try:
+            auth_service.revoke_refresh_token(old_refresh)
+        except Exception:
+            pass
+
+        try:
+            new_refresh = auth_service.create_refresh_token(user.user_id)
+        except Exception:
+            new_refresh = None
+
+        # 将新的 refresh token 写回 HttpOnly cookie（如果创建成功）
+        if new_refresh:
+            secure = settings.REFRESH_TOKEN_COOKIE_SECURE and not settings.DEBUG
+            response.set_cookie(
+                key=settings.REFRESH_TOKEN_COOKIE_NAME,
+                value=new_refresh,
+                httponly=settings.REFRESH_TOKEN_COOKIE_HTTPONLY,
+                secure=secure,
+                samesite=settings.REFRESH_TOKEN_COOKIE_SAMESITE,
+                path=settings.REFRESH_TOKEN_COOKIE_PATH,
+                max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 3600,
+            )
+
+        return RefreshResponse(
+            access_token=access_token,
+            token_type="bearer"
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"刷新 token 失败: {e}")
+
+
 @router.post("/auth/test-email")
 async def test_email_service(email: str = "test@example.com"):
     """
@@ -569,10 +702,10 @@ async def debug_token(authorization: Optional[str] = Header(None), token: Option
             raise HTTPException(status_code=400, detail="缺少 token，请在 Authorization header 或 body 中提供")
 
         auth_service = get_auth_service()
-        payload = auth_service.decode_access_token(token)
+        payload, err = auth_service.decode_access_token_verbose(token)
 
-        if not payload:
-            raise HTTPException(status_code=401, detail="无效或已过期的 token")
+        if err:
+            raise HTTPException(status_code=401, detail=f"无效或已过期的 token: {err}")
 
         return {
             "valid": True,

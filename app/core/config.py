@@ -103,6 +103,14 @@ class Settings(BaseSettings):
     SECRET_KEY: str = "formy-secret-key-change-in-production-please"
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24  # 24 小时
+    # Refresh token 有效期（天）
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 7  # 7 天
+    # Refresh token Cookie 配置
+    REFRESH_TOKEN_COOKIE_NAME: str = "formy_refresh_token"
+    REFRESH_TOKEN_COOKIE_HTTPONLY: bool = True
+    REFRESH_TOKEN_COOKIE_SECURE: bool = True
+    REFRESH_TOKEN_COOKIE_SAMESITE: str = "lax"  # lax/strict/none
+    REFRESH_TOKEN_COOKIE_PATH: str = "/"
     
     @property
     def get_jwt_secret(self) -> str:

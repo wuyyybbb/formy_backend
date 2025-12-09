@@ -46,6 +46,7 @@ class LoginResponse(BaseModel):
     access_token: str = Field(..., description="访问令牌")
     token_type: str = Field(default="bearer", description="令牌类型")
     user: "UserInfo"
+    refresh_token: Optional[str] = Field(None, description="刷新令牌（用于获取新的 access_token）")
 
 
 class UserInfo(BaseModel):
@@ -76,4 +77,17 @@ class SignupResponse(BaseModel):
     access_token: str = Field(..., description="访问令牌")
     token_type: str = Field(default="bearer", description="令牌类型")
     user: UserInfo
+    refresh_token: Optional[str] = Field(None, description="刷新令牌（用于获取新的 access_token）")
+
+
+class RefreshRequest(BaseModel):
+    """刷新 token 请求"""
+    refresh_token: str
+
+
+class RefreshResponse(BaseModel):
+    """刷新 token 响应"""
+    access_token: str
+    token_type: str = Field(default="bearer")
+    refresh_token: Optional[str] = None
 
