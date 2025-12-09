@@ -227,32 +227,61 @@ class TaskService:
         Returns:
             bool: 是否成功
         """
-        try:
-            # 更新数据库
-            print(f"[TaskService] 📝 开始标记任务为完成: {task_id}")
-            success = await crud_tasks.update_task_status(
-                task_id=task_id,
-                status=TaskStatus.DONE.value,
-                progress=100,
-                result=result
-            )
-            print(f"[TaskService] 📊 update_task_status 返回值: {success}")
-            
-            # 同时更新 Redis（用于兼容性，可选）
-            self.queue.update_task_status(
-                task_id=task_id,
-                status="done",
-                progress=100,
-                result=result
-            )
-            
-            print(f"[TaskService] {'✅' if success else '❌'} 任务完成标记: {success}")
-            return success
-        except Exception as e:
-            print(f"[TaskService] ❌ 标记任务完成失败: {e}")
-            import traceback
-            traceback.print_exc()
-            raise
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                # 更新数据库
+                print(f"[TaskService] 📝 开始标记任务为完成: {task_id}（尝试 {attempt + 1}/{max_retries}）")
+                success = await crud_tasks.update_task_status(
+                    task_id=task_id,
+                    status=TaskStatus.DONE.value,
+                    progress=100,
+                    result=result
+                )
+                print(f"[TaskService] 📊 update_task_status 返回值: {success}")
+                
+                # 同时更新 Redis（用于兼容性，可选）
+                try:
+                    self.queue.update_task_status(
+                        task_id=task_id,
+                        status="done",
+                        progress=100,
+                        result=result
+                    )
+                except Exception as redis_error:
+                    print(f"[TaskService] ⚠️  更新 Redis 失败: {redis_error}")
+                    # Redis 失败不影响主流程
+                
+                print(f"[TaskService] {'✅' if success else '❌'} 任务完成标记: {success}")
+                return success
+                
+            except Exception as e:
+                error_msg = str(e).lower()
+                is_connection_error = any(keyword in error_msg for keyword in [
+                    'connection', 'reset', 'closed', 'timeout', 'pool'
+                ])
+                
+                if is_connection_error and attempt < max_retries - 1:
+                    import asyncio
+                    wait_time = (attempt + 1) * 2  # 2, 4, 6 秒
+                    print(f"[TaskService] ⚠️  数据库连接错误，{wait_time}秒后重试（{attempt + 1}/{max_retries}）: {e}")
+                    await asyncio.sleep(wait_time)
+                    
+                    # 尝试重新初始化数据库连接
+                    try:
+                        from app.db import connect_to_db
+                        await connect_to_db()
+                        print(f"[TaskService] ✅ 数据库连接已重新建立")
+                    except Exception as reconnect_error:
+                        print(f"[TaskService] ❌ 重新连接失败: {reconnect_error}")
+                    continue
+                else:
+                    print(f"[TaskService] ❌ 标记任务完成失败（最终失败）: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    raise
+        
+        return False
     
     async def fail_task(
         self, 
@@ -277,37 +306,72 @@ class TaskService:
         Returns:
             bool: 是否成功
         """
-        try:
-            error = {
-                "code": error_code,
-                "message": error_message,
-                "details": error_details
-            }
-            
-            # 退款（如果提供了用户和积分信息）
-            if user_id and credits_consumed:
-                await self._refund_credits_async(task_id, user_id, credits_consumed)
-            
-            # 更新数据库
-            success = await crud_tasks.update_task_status(
-                task_id=task_id,
-                status=TaskStatus.FAILED.value,
-                error=error
-            )
-            
-            # 同时更新 Redis（用于兼容性，可选）
-            self.queue.update_task_status(
-                task_id=task_id,
-                status="failed",
-                error=error
-            )
-            
-            return success
-        except Exception as e:
-            print(f"[TaskService] ❌ 标记任务失败时出错: {e}")
-            import traceback
-            traceback.print_exc()
-            raise
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                error = {
+                    "code": error_code,
+                    "message": error_message,
+                    "details": error_details
+                }
+                
+                # 退款（如果提供了用户和积分信息）
+                if user_id and credits_consumed:
+                    try:
+                        await self._refund_credits_async(task_id, user_id, credits_consumed)
+                    except Exception as refund_error:
+                        print(f"[TaskService] ⚠️  退款失败（尝试 {attempt + 1}/{max_retries}）: {refund_error}")
+                        # 退款失败不应阻止任务状态更新，继续执行
+                
+                # 更新数据库（带重试）
+                success = await crud_tasks.update_task_status(
+                    task_id=task_id,
+                    status=TaskStatus.FAILED.value,
+                    error=error
+                )
+                
+                # 同时更新 Redis（用于兼容性，可选）
+                try:
+                    self.queue.update_task_status(
+                        task_id=task_id,
+                        status="failed",
+                        error=error
+                    )
+                except Exception as redis_error:
+                    print(f"[TaskService] ⚠️  更新 Redis 失败: {redis_error}")
+                    # Redis 失败不影响主流程
+                
+                print(f"[TaskService] ✅ 任务已标记为失败（尝试 {attempt + 1}/{max_retries}）")
+                return success
+                
+            except Exception as e:
+                error_msg = str(e).lower()
+                is_connection_error = any(keyword in error_msg for keyword in [
+                    'connection', 'reset', 'closed', 'timeout', 'pool'
+                ])
+                
+                if is_connection_error and attempt < max_retries - 1:
+                    import asyncio
+                    wait_time = (attempt + 1) * 2  # 2, 4, 6 秒
+                    print(f"[TaskService] ⚠️  数据库连接错误，{wait_time}秒后重试（{attempt + 1}/{max_retries}）: {e}")
+                    await asyncio.sleep(wait_time)
+                    
+                    # 尝试重新初始化数据库连接
+                    try:
+                        from app.db import connect_to_db
+                        await connect_to_db()
+                        print(f"[TaskService] ✅ 数据库连接已重新建立")
+                    except Exception as reconnect_error:
+                        print(f"[TaskService] ❌ 重新连接失败: {reconnect_error}")
+                    continue
+                else:
+                    print(f"[TaskService] ❌ 标记任务失败时出错（最终失败）: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    # 不再抛出异常，避免 Worker 崩溃
+                    return False
+        
+        return False
     
     async def _refund_credits_async(self, task_id: str, user_id: str, credits: int) -> bool:
         """
