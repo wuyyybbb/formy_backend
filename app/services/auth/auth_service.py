@@ -83,7 +83,7 @@ class AuthService:
             self.redis_client.setex(
                 key,
                 self.code_expiry,
-                json.dumps(data)
+                json.dumps(data, default=str)
             )
             return True
         except Exception as e:
@@ -124,7 +124,7 @@ class AuthService:
             self.redis_client.setex(
                 key,
                 self.code_expiry,
-                json.dumps(data)
+                json.dumps(data, default=str)
             )
             
             return True
@@ -297,7 +297,7 @@ class AuthService:
                 "created_at": datetime.utcnow().isoformat()
             }
             expiry_seconds = settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 3600
-            self.redis_client.setex(key, expiry_seconds, json.dumps(data, ensure_ascii=False))
+            self.redis_client.setex(key, expiry_seconds, json.dumps(data, ensure_ascii=False, default=str))
             return token
         except Exception as e:
             print(f"创建 refresh token 失败: {e}")

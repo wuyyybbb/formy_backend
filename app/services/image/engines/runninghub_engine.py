@@ -330,7 +330,7 @@ class RunningHubEngine(EngineBase):
             # 🔍 打印完整的请求 payload
             print(f"[RunningHubEngine] 🔍 完整请求 payload:")
             import json
-            print(json.dumps(payload, indent=2, ensure_ascii=False))
+            print(json.dumps(payload, indent=2, ensure_ascii=False, default=str))
             
             # 发送请求（添加重试机制）
             # 根据官方建议：创建任务接口在请求量大时会比较慢，建议 30 秒超时，但一定可以成功

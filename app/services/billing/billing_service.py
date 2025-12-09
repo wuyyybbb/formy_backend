@@ -71,7 +71,7 @@ class BillingService:
         if user_dict.get("plan_renew_at"):
             user_dict["plan_renew_at"] = user_dict["plan_renew_at"].isoformat()
         
-        self.redis_client.set(user_key, json.dumps(user_dict))
+        self.redis_client.set(user_key, json.dumps(user_dict, default=str))
     
     def get_user_billing_info(self, user_id: str) -> Optional[UserBillingInfo]:
         """

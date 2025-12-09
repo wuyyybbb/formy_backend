@@ -67,7 +67,7 @@ async def create_task(
             0,  # progress
             source_image,
             reference_image,
-            json.dumps(config) if config else None,
+            json.dumps(config, default=str) if config else None,
             credits_consumed,
             now
         )
@@ -269,12 +269,12 @@ async def update_task_status(
     
     if result is not None:
         update_fields.append(f"result = ${param_idx}")
-        params.append(json.dumps(result))
+        params.append(json.dumps(result, default=str))
         param_idx += 1
     
     if error is not None:
         update_fields.append(f"error = ${param_idx}")
-        params.append(json.dumps(error))
+        params.append(json.dumps(error, default=str))
         param_idx += 1
     
     if processing_time is not None:

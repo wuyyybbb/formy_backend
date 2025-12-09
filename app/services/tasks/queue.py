@@ -43,7 +43,7 @@ class TaskQueue:
                 mapping={
                     "task_id": task_id,
                     "status": "pending",
-                    "data": json.dumps(task_data, ensure_ascii=False),
+                    "data": json.dumps(task_data, ensure_ascii=False, default=str),
                     "created_at": datetime.now().isoformat(),
                     "updated_at": datetime.now().isoformat()
                 }
@@ -192,10 +192,10 @@ class TaskQueue:
                 update_data["current_step"] = current_step
             
             if result:
-                update_data["result"] = json.dumps(result, ensure_ascii=False)
+                update_data["result"] = json.dumps(result, ensure_ascii=False, default=str)
             
             if error:
-                update_data["error"] = json.dumps(error, ensure_ascii=False)
+                update_data["error"] = json.dumps(error, ensure_ascii=False, default=str)
             
             # 记录完成/失败时间
             if status == "done":
