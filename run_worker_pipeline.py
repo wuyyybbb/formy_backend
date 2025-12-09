@@ -17,7 +17,7 @@ from app.services.image.pipelines.head_swap_pipeline import HeadSwapPipeline
 from app.services.image.pipelines.background_pipeline import BackgroundPipeline
 from app.services.image.dto import EditTaskInput
 from app.core.error_codes import TaskErrorCode, create_error
-from app.db import init_db_pool, close_db_pool
+from app.db import connect_to_db, close_db_connection
 
 
 class PipelineWorker:
@@ -40,7 +40,7 @@ class PipelineWorker:
     async def async_init(self):
         """异步初始化 - 初始化数据库连接池"""
         print("[Worker] 正在初始化数据库连接池...")
-        await init_db_pool()
+        await connect_to_db()
         print("[Worker] ✅ 数据库连接池初始化成功")
     
     def _setup_signal_handlers(self):
@@ -411,7 +411,7 @@ async def run_pipeline_worker():
     finally:
         # 清理资源
         try:
-            await close_db_pool()
+            await close_db_connection()
             print("[Worker] ✅ 数据库连接池已关闭")
         except Exception as e:
             print(f"[Worker] ⚠️  关闭数据库连接池时出错: {e}")
