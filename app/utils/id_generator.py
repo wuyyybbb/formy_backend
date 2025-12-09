@@ -4,6 +4,7 @@ ID 生成器工具
 import time
 import random
 import string
+import uuid
 
 
 def generate_task_id() -> str:
@@ -21,15 +22,13 @@ def generate_task_id() -> str:
 
 def generate_user_id() -> str:
     """
-    生成用户 ID
-    格式: usr_<timestamp>_<random>
+    生成用户 ID（改为 UUID）
+    格式: UUID v4 (标准 UUID 格式)
     
     Returns:
-        str: 用户 ID，例如: usr_1234567890_abc123
+        str: 用户 ID，例如: 550e8400-e29b-41d4-a716-446655440000
     """
-    timestamp = int(time.time())
-    random_str = ''.join(random.choices(string.ascii_lowercase + string.digits, k=6))
-    return f"usr_{timestamp}_{random_str}"
+    return str(uuid.uuid4())
 
 
 def generate_file_id() -> str:

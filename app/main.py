@@ -63,11 +63,10 @@ async def startup_event():
     # 连接 PostgreSQL 数据库
     try:
         await connect_to_db()
+        print("[DB] ✅ 数据库连接成功")
     except Exception as e:
-        print(f"❌ 数据库连接失败，应用无法启动: {e}")
-        import traceback
-        traceback.print_exc()
-        raise  # 让应用启动失败，便于诊断
+        print(f"⚠️  数据库连接失败，但应用将继续运行（只有某些功能不可用）: {e}")
+        # 不再 raise，允许应用继续运行
     
     print("="*60 + "\n")
 
@@ -99,6 +98,49 @@ async def root():
 async def health_check():
     """健康检查"""
     return {"status": "healthy"}
+
+
+@app.get("/diagnose/db")
+async def diagnose_db():
+    """诊断数据库连接"""
+    import socket
+    from app.core.config import settings
+    
+    try:
+        # 解析 DATABASE_URL 获取主机和端口
+        if settings.DATABASE_URL:
+            # postgresql://user:pass@host:port/db
+            url_parts = settings.DATABASE_URL.replace("postgresql://", "").split("@")
+            if len(url_parts) == 2:
+                host_port = url_parts[1].split("/")[0]
+                host, port = host_port.rsplit(":", 1)
+                port = int(port)
+                
+                # 测试连接
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.settimeout(5)
+                result = sock.connect_ex((host, port))
+                sock.close()
+                
+                if result == 0:
+                    return {
+                        "status": "可连接",
+                        "host": host,
+                        "port": port,
+                        "message": "Supabase 数据库可访问"
+                    }
+                else:
+                    return {
+                        "status": "无法连接",
+                        "host": host,
+                        "port": port,
+                        "errno": result,
+                        "message": f"无法连接到 {host}:{port}"
+                    }
+        else:
+            return {"status": "error", "message": "DATABASE_URL 未配置"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 
 
 if __name__ == "__main__":

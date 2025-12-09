@@ -61,7 +61,7 @@ CREATE INDEX IF NOT EXISTS idx_users_created_at ON users(created_at DESC);
 
 -- ========== 注释 ==========
 COMMENT ON TABLE users IS '用户信息表';
-COMMENT ON COLUMN users.user_id IS '用户ID（格式: usr_xxxxxxxx）';
+COMMENT ON COLUMN users.user_id IS '用户ID（UUID 格式）';
 COMMENT ON COLUMN users.email IS '用户邮箱（唯一）';
 COMMENT ON COLUMN users.username IS '用户名（显示名称）';
 COMMENT ON COLUMN users.avatar IS '头像URL';

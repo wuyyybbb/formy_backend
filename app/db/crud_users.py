@@ -95,10 +95,10 @@ async def create_user(
     if not pool:
         raise Exception("数据库连接池未初始化")
     
-    # 如果没有提供 user_id，生成一个（格式：usr_xxxxxxxx）
+    # 如果没有提供 user_id，生成一个（UUID 格式）
     if not user_id:
         import uuid
-        user_id = f"usr_{uuid.uuid4().hex[:12]}"
+        user_id = str(uuid.uuid4())
     
     # 统一邮箱为小写
     email = email.lower()
