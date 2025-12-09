@@ -3,12 +3,13 @@
 """
 from datetime import datetime
 from typing import Optional
+from uuid import UUID
 from pydantic import BaseModel, EmailStr, Field
 
 
 class User(BaseModel):
     """用户模型"""
-    user_id: str = Field(..., description="用户 ID")
+    user_id: UUID = Field(..., description="用户 ID（UUID 格式）")
     email: EmailStr = Field(..., description="邮箱地址")
     username: Optional[str] = Field(None, description="用户名")
     avatar: Optional[str] = Field(None, description="头像 URL")

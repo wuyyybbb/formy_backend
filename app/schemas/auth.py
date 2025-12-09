@@ -4,6 +4,7 @@
 from pydantic import BaseModel, EmailStr, Field
 from typing import Optional
 from datetime import datetime
+from uuid import UUID
 
 
 class SendCodeRequest(BaseModel):
@@ -51,7 +52,7 @@ class LoginResponse(BaseModel):
 
 class UserInfo(BaseModel):
     """用户信息"""
-    user_id: str
+    user_id: UUID
     email: EmailStr
     username: Optional[str] = None
     avatar: Optional[str] = None

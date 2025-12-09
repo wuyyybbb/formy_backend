@@ -245,6 +245,7 @@ class AuthService:
             
             if user_data_str:
                 user_data = json.loads(user_data_str)
+                # Pydantic 会自动将字符串 user_id 转换为 UUID，将 ISO 字符串转换为 datetime
                 return User(**user_data)
             
             return None
@@ -267,7 +268,7 @@ class AuthService:
         expire = datetime.utcnow() + expires_delta
         
         to_encode = {
-            "sub": user.user_id,
+            "sub": str(user.user_id),  # 确保 user_id 转换为字符串
             "email": user.email,
             "exp": expire
         }
@@ -281,16 +282,18 @@ class AuthService:
         return encoded_jwt
 
     # ----------------- Refresh Token -----------------
-    def create_refresh_token(self, user_id: str) -> str:
+    def create_refresh_token(self, user_id) -> str:
         """
         创建并保存 refresh token（随机字符串），存储到 Redis
+        Args:
+            user_id: 用户 ID（UUID 或 str）
         Returns: refresh_token string
         """
         try:
             token = uuid.uuid4().hex
             key = f"refresh_token:{token}"
             data = {
-                "user_id": user_id,
+                "user_id": str(user_id),  # 确保存储为字符串
                 "created_at": datetime.utcnow().isoformat()
             }
             expiry_seconds = settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 3600

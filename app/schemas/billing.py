@@ -4,12 +4,13 @@
 """
 from typing import Optional
 from datetime import datetime
+from uuid import UUID
 from pydantic import BaseModel, Field
 
 
 class UserBillingInfo(BaseModel):
     """用户计费信息"""
-    user_id: str = Field(..., description="用户ID")
+    user_id: UUID = Field(..., description="用户ID（UUID 格式）")
     email: str = Field(..., description="邮箱地址")
     
     # 当前套餐
@@ -80,7 +81,7 @@ class ChangePlanResponse(BaseModel):
 class CreditTransaction(BaseModel):
     """算力交易记录（未来扩展）"""
     transaction_id: str
-    user_id: str
+    user_id: UUID
     amount: int  # 正数为增加，负数为消耗
     balance_after: int
     transaction_type: str  # "recharge", "consume", "refund", "monthly_reset"
