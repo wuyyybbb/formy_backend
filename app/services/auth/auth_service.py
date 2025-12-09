@@ -133,9 +133,9 @@ class AuthService:
             print(f"验证验证码失败: {e}")
             return False
     
-    def get_or_create_user(self, email: str) -> User:
+    async def get_or_create_user(self, email: str) -> User:
         """
-        获取或创建用户
+        获取或创建用户（同时保存到 PostgreSQL 和 Redis）
         
         Args:
             email: 邮箱地址
@@ -143,15 +143,14 @@ class AuthService:
         Returns:
             User: 用户对象
         """
+        from app.db.crud_users import get_user_by_email, create_user
+        
         try:
-            # 尝试从 Redis 获取用户
-            user_key = f"user:email:{email}"
-            user_data_str = self.redis_client.get(user_key)
+            # 先从 PostgreSQL 查询（数据源）
+            user = await get_user_by_email(email)
             
-            if user_data_str:
-                user_data = json.loads(user_data_str)
-                user = User(**user_data)
-                # 更新最后登录时间
+            if user:
+                # 用户已存在，更新最后登录时间
                 user.last_login = datetime.now()
                 
                 # 检查白名单：如果用户在白名单中，确保算力至少是 100000
@@ -160,28 +159,29 @@ class AuthService:
                     old_credits = user.current_credits
                     user.current_credits = settings.WHITELIST_CREDITS
                     print(f"🌟 白名单用户登录: {email}, 算力已从 {old_credits} 补充到 {user.current_credits}")
+                    # 更新白名单用户的算力到数据库
+                    from app.db.crud_users import update_user_credits
+                    await update_user_credits(user.user_id, user.current_credits - old_credits, update_total_used=False)
             else:
                 # 创建新用户，分配免费算力
                 # 检查是否在白名单中
                 is_whitelist = settings.is_whitelisted(email)
                 initial_credits = settings.WHITELIST_CREDITS if is_whitelist else 100
                 
-                user = User(
-                    user_id=generate_user_id(),
+                # 直接创建到 PostgreSQL
+                user = await create_user(
                     email=email,
                     username=email.split('@')[0],
-                    created_at=datetime.now(),
-                    last_login=datetime.now(),
-                    # 白名单用户获得特殊算力，普通用户默认 100 算力
-                    current_plan_id=None,  # 免费用户没有套餐
-                    current_credits=initial_credits,  # 白名单: 100000, 普通: 100
-                    plan_renew_at=None
+                    current_credits=initial_credits,
+                    is_active=True
                 )
                 
                 if is_whitelist:
                     print(f"🌟 白名单用户注册: {email}, 初始算力: {initial_credits}")
+                else:
+                    print(f"✅ 普通用户注册: {email}, 初始算力: {initial_credits}")
             
-            # 保存用户信息
+            # 保存用户信息到 Redis（缓存）
             self.save_user(user)
             
             return user
@@ -219,9 +219,9 @@ class AuthService:
             print(f"保存用户失败: {e}")
             return False
     
-    def get_user_by_id(self, user_id: str) -> Optional[User]:
+    async def get_user_by_id(self, user_id: str) -> Optional[User]:
         """
-        根据 ID 获取用户
+        根据 ID 获取用户（优先从 PostgreSQL，其次从 Redis）
         
         Args:
             user_id: 用户 ID
@@ -229,15 +229,25 @@ class AuthService:
         Returns:
             Optional[User]: 用户对象
         """
+        from app.db.crud_users import get_user_by_id as db_get_user_by_id
+        
         try:
+            # 先尝试从数据库查询
+            user = await db_get_user_by_id(user_id)
+            if user:
+                # 缓存到 Redis
+                self.save_user(user)
+                return user
+            
+            # 数据库中没有，尝试从 Redis 读取（兼容性）
             user_id_key = f"user:id:{user_id}"
             user_data_str = self.redis_client.get(user_id_key)
             
-            if not user_data_str:
-                return None
+            if user_data_str:
+                user_data = json.loads(user_data_str)
+                return User(**user_data)
             
-            user_data = json.loads(user_data_str)
-            return User(**user_data)
+            return None
             
         except Exception as e:
             print(f"获取用户失败: {e}")
@@ -392,9 +402,9 @@ class AuthService:
             print(f"验证密码失败: {e}")
             return False
     
-    def get_user_by_email(self, email: str) -> Optional[User]:
+    async def get_user_by_email(self, email: str) -> Optional[User]:
         """
-        根据邮箱获取用户
+        根据邮箱获取用户（优先从 PostgreSQL，其次从 Redis）
         
         Args:
             email: 邮箱地址
@@ -402,15 +412,25 @@ class AuthService:
         Returns:
             Optional[User]: 用户对象
         """
+        from app.db.crud_users import get_user_by_email as db_get_user_by_email
+        
         try:
+            # 先尝试从数据库查询
+            user = await db_get_user_by_email(email)
+            if user:
+                # 缓存到 Redis
+                self.save_user(user)
+                return user
+            
+            # 数据库中没有，尝试从 Redis 读取（兼容性）
             user_key = f"user:email:{email}"
             user_data_str = self.redis_client.get(user_key)
             
-            if not user_data_str:
-                return None
+            if user_data_str:
+                user_data = json.loads(user_data_str)
+                return User(**user_data)
             
-            user_data = json.loads(user_data_str)
-            return User(**user_data)
+            return None
             
         except Exception as e:
             print(f"获取用户失败: {e}")

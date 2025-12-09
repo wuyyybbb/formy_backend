@@ -152,7 +152,7 @@ async def grant_user_credits(
     
     try:
         auth_service = get_auth_service()
-        user = auth_service.get_user_by_email(email)
+        user = await auth_service.get_user_by_email(email)
         
         if not user:
             raise HTTPException(

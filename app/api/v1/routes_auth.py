@@ -132,8 +132,8 @@ async def login_with_code(request: LoginRequest, response: Response):
                 detail="验证码错误或已过期"
             )
         
-        # 获取或创建用户
-        user = auth_service.get_or_create_user(request.email)
+        # 获取或创建用户（现在会同时保存到 PostgreSQL）
+        user = await auth_service.get_or_create_user(request.email)
         
         # 创建访问令牌
         access_token = auth_service.create_access_token(user)
@@ -216,9 +216,9 @@ async def get_current_user(authorization: Optional[str] = Header(None)):
                 detail="无效的令牌"
             )
         
-        # 获取用户
+        # 获取用户（从 PostgreSQL 或 Redis）
         user_id = payload.get("sub")
-        user = auth_service.get_user_by_id(user_id)
+        user = await auth_service.get_user_by_id(user_id)
         
         if not user:
             raise HTTPException(
@@ -581,8 +581,8 @@ async def refresh_token_endpoint(req: Request, response: Response, payload: Opti
             response.delete_cookie(key=settings.REFRESH_TOKEN_COOKIE_NAME, path=settings.REFRESH_TOKEN_COOKIE_PATH)
             raise HTTPException(status_code=401, detail="无效或已过期的 refresh_token")
 
-        # 获取用户
-        user = auth_service.get_user_by_id(user_id)
+        # 获取用户（从 PostgreSQL 或 Redis）
+        user = await auth_service.get_user_by_id(user_id)
         if not user:
             response.delete_cookie(key=settings.REFRESH_TOKEN_COOKIE_NAME, path=settings.REFRESH_TOKEN_COOKIE_PATH)
             raise HTTPException(status_code=401, detail="refresh_token 对应的用户不存在")
