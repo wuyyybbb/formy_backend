@@ -98,7 +98,7 @@ async def create_task(
         
         # 4. 创建任务 - 传递 user_id 和消耗的积分
         task_service = get_task_service()
-        task_info = task_service.create_task(
+        task_info = await task_service.create_task(
             request, 
             user_id=current_user_id,
             credits_consumed=required_credits
@@ -157,7 +157,7 @@ async def get_task(
         403: 无权访问该任务（不属于当前用户）
     """
     task_service = get_task_service()
-    task_info = task_service.get_task(task_id)
+    task_info = await task_service.get_task(task_id)
     
     if not task_info:
         raise HTTPException(
@@ -218,7 +218,7 @@ async def list_tasks(
     """
     try:
         task_service = get_task_service()
-        tasks = task_service.get_task_list(
+        tasks = await task_service.get_task_list(
             user_id=current_user_id,  # 只返回当前用户的任务
             status_filter=status,
             mode_filter=mode,
@@ -230,7 +230,7 @@ async def list_tasks(
         task_infos = []
         for task_summary in tasks:
             # 获取完整任务信息
-            full_task = task_service.get_task(task_summary.task_id)
+            full_task = await task_service.get_task(task_summary.task_id)
             if full_task:
                 task_infos.append(full_task)
         
@@ -278,7 +278,7 @@ async def get_task_history(
         user_id = current_user.user_id
         
         # 获取任务列表（只返回当前用户的任务）
-        tasks = task_service.get_task_list(
+        tasks = await task_service.get_task_list(
             user_id=user_id,
             status_filter=None,  # 历史记录不筛选状态
             mode_filter=mode,
@@ -290,7 +290,7 @@ async def get_task_history(
         task_infos = []
         for task_summary in tasks:
             # 获取完整任务信息（包含 source_image, reference_image）
-            full_task = task_service.get_task(task_summary.task_id)
+            full_task = await task_service.get_task(task_summary.task_id)
             if full_task:
                 # 构建图片 URL（用于前端回填）
                 task_dict = full_task.model_dump()
@@ -350,7 +350,7 @@ async def cancel_task(
         task_service = get_task_service()
         
         # 从数据库获取任务信息
-        task_info = task_service.get_task(task_id)
+        task_info = await task_service.get_task(task_id)
         if not task_info:
             raise HTTPException(
                 status_code=404,

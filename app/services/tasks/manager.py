@@ -28,7 +28,7 @@ class TaskService:
         """初始化任务服务"""
         self.queue = get_task_queue()
     
-    def create_task(
+    async def create_task(
         self, 
         request: TaskCreateRequest,
         user_id: Optional[str] = None,
@@ -66,7 +66,7 @@ class TaskService:
                              request.config.get("pose_image"))
         
         # 3. 写入数据库（持久化存储）
-        task_info = asyncio.run(crud_tasks.create_task(
+        task_info = await crud_tasks.create_task(
             task_id=task_id,
             user_id=user_id,
             mode=request.mode.value,
@@ -74,7 +74,7 @@ class TaskService:
             reference_image=reference_image,
             config=request.config,
             credits_consumed=credits_consumed
-        ))
+        )
         
         # 4. 推入 Redis 队列（用于 worker 处理）
         task_data = {
@@ -94,7 +94,7 @@ class TaskService:
         # 5. 返回任务信息
         return task_info
     
-    def get_task(self, task_id: str) -> Optional[TaskInfo]:
+    async def get_task(self, task_id: str) -> Optional[TaskInfo]:
         """
         获取任务详情
         
@@ -105,10 +105,10 @@ class TaskService:
             Optional[TaskInfo]: 任务信息，不存在返回 None
         """
         # 从数据库获取任务数据
-        task_info = asyncio.run(crud_tasks.get_task_by_id(task_id))
+        task_info = await crud_tasks.get_task_by_id(task_id)
         return task_info
     
-    def get_task_list(
+    async def get_task_list(
         self, 
         user_id: Optional[str] = None,
         status_filter: Optional[str] = None,
@@ -133,13 +133,13 @@ class TaskService:
             raise ValueError("user_id 是必需的，用于过滤任务")
         
         # 从数据库获取任务列表
-        task_infos = asyncio.run(crud_tasks.get_tasks_by_user(
+        task_infos = await crud_tasks.get_tasks_by_user(
             user_id=user_id,
             status_filter=status_filter,
             mode_filter=mode_filter,
             page=page,
             page_size=page_size
-        ))
+        )
         
         # 转换为任务摘要
         tasks = []
@@ -156,7 +156,7 @@ class TaskService:
         
         return tasks
     
-    def cancel_task(self, task_id: str) -> bool:
+    async def cancel_task(self, task_id: str) -> bool:
         """
         取消任务
         
@@ -167,17 +167,17 @@ class TaskService:
             bool: 是否成功
         """
         # 更新数据库状态为已取消
-        success = asyncio.run(crud_tasks.update_task_status(
+        success = await crud_tasks.update_task_status(
             task_id=task_id,
             status=TaskStatus.CANCELLED.value
-        ))
+        )
         
         # 同时更新 Redis（用于兼容性）
         self.queue.cancel_task(task_id)
         
         return success
     
-    def update_task_progress(
+    async def update_task_progress(
         self, 
         task_id: str, 
         progress: int,
@@ -195,7 +195,7 @@ class TaskService:
             bool: 是否成功
         """
         # 更新数据库
-        success = asyncio.run(crud_tasks.update_task_status(
+        success = await crud_tasks.update_task_status(
             task_id=task_id,
             status=TaskStatus.PROCESSING.value,
             progress=progress,
