@@ -64,7 +64,10 @@ async def startup_event():
     try:
         await connect_to_db()
     except Exception as e:
-        print(f"⚠️  数据库连接失败（应用将继续运行）: {e}")
+        print(f"❌ 数据库连接失败，应用无法启动: {e}")
+        import traceback
+        traceback.print_exc()
+        raise  # 让应用启动失败，便于诊断
     
     print("="*60 + "\n")
 
