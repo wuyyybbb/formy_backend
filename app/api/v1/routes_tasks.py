@@ -108,6 +108,7 @@ async def create_task(
         task_info.credits_consumed = required_credits
         
         print(f"✓ Task created successfully: {task_info.task_id}, Credits: {required_credits}")
+        print(f"✓ 任务已推送到 Redis 队列，等待 Worker 处理...")
         
         return task_info
         

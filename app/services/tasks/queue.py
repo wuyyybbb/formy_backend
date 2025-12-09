@@ -36,6 +36,8 @@ class TaskQueue:
             bool: 是否成功
         """
         try:
+            print(f"[TaskQueue] 📤 开始推送任务到 Redis: task_id={task_id}, queue_key={self.QUEUE_KEY}")
+            
             # 1. 存储任务数据到 Hash
             task_key = f"{self.TASK_KEY_PREFIX}{task_id}"
             self.redis_client.hset(
@@ -48,13 +50,17 @@ class TaskQueue:
                     "updated_at": datetime.now().isoformat()
                 }
             )
+            print(f"[TaskQueue] ✅ 任务数据已存储到 Redis: {task_key}")
             
             # 2. 推入队列（右侧推入）
-            self.redis_client.rpush(self.QUEUE_KEY, task_id)
+            result = self.redis_client.rpush(self.QUEUE_KEY, task_id)
+            print(f"[TaskQueue] ✅ 任务已推入队列: queue_length={result}")
             
             return True
         except Exception as e:
-            print(f"推送任务失败: {e}")
+            print(f"[TaskQueue] ❌ 推送任务失败: {e}")
+            import traceback
+            traceback.print_exc()
             return False
     
     def pop_task(self, timeout: int = 5) -> Optional[str]:
@@ -73,12 +79,15 @@ class TaskQueue:
         for attempt in range(max_retries):
             try:
                 # 从左侧弹出（FIFO）
+                print(f"[TaskQueue] 🔍 等待任务... (timeout={timeout}s, queue_key={self.QUEUE_KEY})")
                 result = self.redis_client.blpop(self.QUEUE_KEY, timeout=timeout)
                 if result:
                     _, task_id = result
                     # 标记为处理中
                     self.redis_client.sadd(self.PROCESSING_SET, task_id)
+                    print(f"[TaskQueue] ✅ 获取到任务: {task_id}")
                     return task_id
+                print(f"[TaskQueue] ⏰ 队列暂无任务 (timeout={timeout}s)")
                 return None
             except redis.TimeoutError as e:
                 # Redis 操作超时（不是 socket 超时）
