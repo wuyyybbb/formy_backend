@@ -153,20 +153,25 @@ class AuthService:
                 # 用户已存在，更新最后登录时间
                 user.last_login = datetime.now()
                 
-                # 检查白名单：如果用户在白名单中，确保算力至少是 100000
-                is_whitelist = settings.is_whitelisted(email)
-                if is_whitelist and user.current_credits < settings.WHITELIST_CREDITS:
+                # 检查白名单：如果用户在白名单中，确保算力至少是对应等级的额度
+                whitelist_credits = settings.get_whitelist_credits(email)
+                if whitelist_credits > 100 and user.current_credits < whitelist_credits:
                     old_credits = user.current_credits
-                    user.current_credits = settings.WHITELIST_CREDITS
-                    print(f"🌟 白名单用户登录: {email}, 算力已从 {old_credits} 补充到 {user.current_credits}")
+                    user.current_credits = whitelist_credits
+                    
+                    # 判断白名单类型
+                    if settings.is_vip_whitelisted(email):
+                        print(f"🌟 VIP白名单用户登录: {email}, 算力已从 {old_credits} 补充到 {user.current_credits}")
+                    elif settings.is_trial_whitelisted(email):
+                        print(f"🎁 试用白名单用户登录: {email}, 算力已从 {old_credits} 补充到 {user.current_credits}")
+                    
                     # 更新白名单用户的算力到数据库
                     from app.db.crud_users import update_user_credits
                     await update_user_credits(user.user_id, user.current_credits - old_credits, update_total_used=False)
             else:
                 # 创建新用户，分配免费算力
                 # 检查是否在白名单中
-                is_whitelist = settings.is_whitelisted(email)
-                initial_credits = settings.WHITELIST_CREDITS if is_whitelist else 100
+                initial_credits = settings.get_whitelist_credits(email)
                 
                 # 直接创建到 PostgreSQL
                 user = await create_user(
@@ -176,8 +181,11 @@ class AuthService:
                     is_active=True
                 )
                 
-                if is_whitelist:
-                    print(f"🌟 白名单用户注册: {email}, 初始算力: {initial_credits}")
+                # 打印注册信息
+                if settings.is_vip_whitelisted(email):
+                    print(f"🌟 VIP白名单用户注册: {email}, 初始算力: {initial_credits}")
+                elif settings.is_trial_whitelisted(email):
+                    print(f"🎁 试用白名单用户注册: {email}, 初始算力: {initial_credits}")
                 else:
                     print(f"✅ 普通用户注册: {email}, 初始算力: {initial_credits}")
             

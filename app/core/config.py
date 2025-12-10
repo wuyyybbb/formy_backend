@@ -176,29 +176,86 @@ class Settings(BaseSettings):
     FROM_NAME: str = "Formy"
     
     # ==================== 白名单配置 ====================
-    # 白名单用户邮箱列表（逗号分隔），这些用户将获得特殊算力
+    # VIP 白名单用户邮箱列表（逗号分隔），这些用户将获得 10000 算力
+    VIP_WHITELIST_EMAILS: str = "wyb3206@163.com,wuyebei3206@gmail.com"
+    # VIP 白名单用户的算力额度
+    VIP_WHITELIST_CREDITS: int = 10000
+    
+    # 试用白名单用户邮箱列表（逗号分隔），这些用户将获得 1000 算力试用
+    TRIAL_WHITELIST_EMAILS: str = "553588070@qq.com"
+    # 试用白名单用户的算力额度
+    TRIAL_WHITELIST_CREDITS: int = 1000
+    
+    # 兼容旧的配置（将被废弃）
     WHITELIST_EMAILS: str = "wyb3206@163.com,wuyebei3206@gmail.com"
-    # 白名单用户的算力额度
-    WHITELIST_CREDITS: int = 100000
+    WHITELIST_CREDITS: int = 10000
+    
     # 管理员密码（用于管理白名单）
     ADMIN_PASSWORD: str = "wyb518"
     
     @property
-    def get_whitelist_emails(self) -> set:
+    def get_vip_whitelist_emails(self) -> set:
         """
-        获取白名单邮箱列表
+        获取 VIP 白名单邮箱列表
         
         Returns:
-            set: 白名单邮箱集合（小写）
+            set: VIP 白名单邮箱集合（小写）
         """
-        if not self.WHITELIST_EMAILS:
+        if not self.VIP_WHITELIST_EMAILS:
             return set()
-        emails = [email.strip().lower() for email in self.WHITELIST_EMAILS.split(",") if email.strip()]
+        emails = [email.strip().lower() for email in self.VIP_WHITELIST_EMAILS.split(",") if email.strip()]
         return set(emails)
+    
+    @property
+    def get_trial_whitelist_emails(self) -> set:
+        """
+        获取试用白名单邮箱列表
+        
+        Returns:
+            set: 试用白名单邮箱集合（小写）
+        """
+        if not self.TRIAL_WHITELIST_EMAILS:
+            return set()
+        emails = [email.strip().lower() for email in self.TRIAL_WHITELIST_EMAILS.split(",") if email.strip()]
+        return set(emails)
+    
+    @property
+    def get_whitelist_emails(self) -> set:
+        """
+        获取所有白名单邮箱列表（VIP + 试用）
+        
+        Returns:
+            set: 所有白名单邮箱集合（小写）
+        """
+        return self.get_vip_whitelist_emails | self.get_trial_whitelist_emails
+    
+    def is_vip_whitelisted(self, email: str) -> bool:
+        """
+        检查邮箱是否在 VIP 白名单中
+        
+        Args:
+            email: 邮箱地址
+            
+        Returns:
+            bool: 是否在 VIP 白名单中
+        """
+        return email.lower() in self.get_vip_whitelist_emails
+    
+    def is_trial_whitelisted(self, email: str) -> bool:
+        """
+        检查邮箱是否在试用白名单中
+        
+        Args:
+            email: 邮箱地址
+            
+        Returns:
+            bool: 是否在试用白名单中
+        """
+        return email.lower() in self.get_trial_whitelist_emails
     
     def is_whitelisted(self, email: str) -> bool:
         """
-        检查邮箱是否在白名单中
+        检查邮箱是否在任意白名单中（VIP 或试用）
         
         Args:
             email: 邮箱地址
@@ -207,6 +264,23 @@ class Settings(BaseSettings):
             bool: 是否在白名单中
         """
         return email.lower() in self.get_whitelist_emails
+    
+    def get_whitelist_credits(self, email: str) -> int:
+        """
+        获取白名单用户应得的积分数
+        
+        Args:
+            email: 邮箱地址
+            
+        Returns:
+            int: 应得积分数（如果不在白名单则返回 100）
+        """
+        if self.is_vip_whitelisted(email):
+            return self.VIP_WHITELIST_CREDITS
+        elif self.is_trial_whitelisted(email):
+            return self.TRIAL_WHITELIST_CREDITS
+        else:
+            return 100  # 普通用户默认积分
     
     # ==================== 日志配置 ====================
     LOG_LEVEL: str = "INFO"  # DEBUG / INFO / WARNING / ERROR
