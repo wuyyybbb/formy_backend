@@ -43,6 +43,12 @@ async def create_task(
     now = datetime.utcnow()
     
     async with pool.acquire() as conn:
+        # 测试连接有效性
+        try:
+            await conn.execute("SELECT 1")
+        except Exception as conn_test_error:
+            print(f"[CRUD] ❌ 数据库连接失效: {conn_test_error}")
+            raise
         await conn.execute(
             """
             INSERT INTO tasks (
@@ -104,6 +110,12 @@ async def get_task_by_id(task_id: str) -> Optional[TaskInfo]:
         raise Exception("数据库连接池未初始化")
     
     async with pool.acquire() as conn:
+        # 测试连接有效性
+        try:
+            await conn.execute("SELECT 1")
+        except Exception as conn_test_error:
+            print(f"[CRUD] ❌ 数据库连接失效: {conn_test_error}")
+            raise
         row = await conn.fetchrow(
             """
             SELECT 
@@ -185,6 +197,12 @@ async def get_tasks_by_user(
     offset = (page - 1) * page_size
     
     async with pool.acquire() as conn:
+        # 测试连接有效性
+        try:
+            await conn.execute("SELECT 1")
+        except Exception as conn_test_error:
+            print(f"[CRUD] ❌ 数据库连接失效: {conn_test_error}")
+            raise
         rows = await conn.fetch(
             f"""
             SELECT 
@@ -301,6 +319,12 @@ async def update_task_status(
     """
     
     async with pool.acquire() as conn:
+        # 测试连接有效性
+        try:
+            await conn.execute("SELECT 1")
+        except Exception as conn_test_error:
+            print(f"[CRUD] ❌ 数据库连接失效: {conn_test_error}")
+            raise
         print(f"[CRUD] 🔍 执行 SQL 更新:")
         print(f"[CRUD]    SQL: {sql_query.strip()}")
         print(f"[CRUD]    参数: {[task_id, status, *params[3:]]}")
@@ -335,6 +359,12 @@ async def delete_task(task_id: str) -> bool:
         raise Exception("数据库连接池未初始化")
     
     async with pool.acquire() as conn:
+        # 测试连接有效性
+        try:
+            await conn.execute("SELECT 1")
+        except Exception as conn_test_error:
+            print(f"[CRUD] ❌ 数据库连接失效: {conn_test_error}")
+            raise
         result = await conn.execute(
             """
             DELETE FROM tasks
@@ -388,6 +418,12 @@ async def count_tasks_by_user(
     where_clause = " AND ".join(conditions)
     
     async with pool.acquire() as conn:
+        # 测试连接有效性
+        try:
+            await conn.execute("SELECT 1")
+        except Exception as conn_test_error:
+            print(f"[CRUD] ❌ 数据库连接失效: {conn_test_error}")
+            raise
         count = await conn.fetchval(
             f"""
             SELECT COUNT(*)
