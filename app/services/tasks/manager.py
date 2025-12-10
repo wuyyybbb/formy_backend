@@ -1,4 +1,4 @@
-"""
+﻿"""
 任务管理服务
 提供任务创建、查询、取消等业务逻辑
 """
@@ -306,6 +306,18 @@ class TaskService:
         Returns:
             bool: 是否成功
         """
+        # 🔒 先执行退款（在重试循环外，防止重复退款）
+        refund_success = False
+        if user_id and credits_consumed:
+            try:
+                refund_success = await self._refund_credits_async(task_id, user_id, credits_consumed)
+                if not refund_success:
+                    print(f"[TaskService] ⚠️  退款失败，但继续更新任务状态")
+            except Exception as refund_error:
+                print(f"[TaskService] ❌ 退款异常: {refund_error}")
+                # 退款失败不应阻止任务状态更新，继续执行
+        
+        # 更新任务状态（带重试）
         max_retries = 3
         for attempt in range(max_retries):
             try:
@@ -314,11 +326,6 @@ class TaskService:
                     "message": error_message,
                     "details": error_details
                 }
-                
-                # 退款（如果提供了用户和积分信息）
-                if user_id and credits_consumed:
-                    try:
-                        await self._refund_credits_async(task_id, user_id, credits_consumed)
                     except Exception as refund_error:
                         print(f"[TaskService] ⚠️  退款失败（尝试 {attempt + 1}/{max_retries}）: {refund_error}")
                         # 退款失败不应阻止任务状态更新，继续执行
