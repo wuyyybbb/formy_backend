@@ -168,6 +168,27 @@ class AuthService:
                     # 更新白名单用户的算力到数据库
                     from app.db.crud_users import update_user_credits
                     await update_user_credits(user.user_id, user.current_credits - old_credits, update_total_used=False)
+                else:
+                    # 普通用户登录，积分保持不变
+                    print(f"👤 普通用户登录: {email}, 当前积分: {user.current_credits}")
+                
+                # 更新最后登录时间到数据库
+                from app.db import get_pool
+                pool = get_pool()
+                if pool:
+                    try:
+                        async with pool.acquire() as conn:
+                            await conn.execute(
+                                """
+                                UPDATE users
+                                SET last_login = $1
+                                WHERE user_id = $2
+                                """,
+                                user.last_login,
+                                user.user_id
+                            )
+                    except Exception as e:
+                        print(f"⚠️  更新 last_login 失败: {e}")
             else:
                 # 创建新用户，分配免费算力
                 # 检查是否在白名单中
