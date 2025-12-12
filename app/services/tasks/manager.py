@@ -326,9 +326,6 @@ class TaskService:
                     "message": error_message,
                     "details": error_details
                 }
-                    except Exception as refund_error:
-                        print(f"[TaskService] ⚠️  退款失败（尝试 {attempt + 1}/{max_retries}）: {refund_error}")
-                        # 退款失败不应阻止任务状态更新，继续执行
                 
                 # 更新数据库（带重试）
                 success = await crud_tasks.update_task_status(
