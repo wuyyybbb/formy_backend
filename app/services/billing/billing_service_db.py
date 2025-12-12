@@ -174,13 +174,14 @@ class BillingServiceDB:
         
         return success
     
-    def add_credits(self, user_id: str, amount: int) -> bool:
+    def add_credits(self, user_id: str, amount: int, is_refund: bool = False) -> bool:
         """
-        增加用户算力（充值、赠送等）
+        增加用户算力（充值、赠送、退款等）
         
         Args:
             user_id: 用户ID
             amount: 增加的算力数量
+            is_refund: 是否是退款（退款时需要减少total_used）
             
         Returns:
             是否成功
@@ -194,7 +195,8 @@ class BillingServiceDB:
         success = asyncio.run(crud_users.update_user_credits(
             user_id=user_id,
             credits_delta=amount,
-            update_total_used=False
+            update_total_used=False,
+            is_refund=is_refund
         ))
         
         if success:
@@ -267,4 +269,5 @@ class BillingServiceDB:
 
 # 全局实例（数据库版本）
 billing_service_db = BillingServiceDB()
+
 

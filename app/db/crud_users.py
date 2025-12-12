@@ -49,7 +49,8 @@ async def get_user_by_email(email: str) -> Optional[User]:
                 current_plan_id,
                 current_credits,
                 plan_renew_at,
-                total_credits_used
+                total_credits_used,
+                signup_bonus_granted
             FROM users
             WHERE email = $1
             """,
@@ -73,7 +74,8 @@ async def get_user_by_email(email: str) -> Optional[User]:
             current_plan_id=row['current_plan_id'],
             current_credits=row['current_credits'] or 0,
             plan_renew_at=row['plan_renew_at'],
-            total_credits_used=row['total_credits_used'] or 0
+            total_credits_used=row['total_credits_used'] or 0,
+            signup_bonus_granted=row.get('signup_bonus_granted') if 'signup_bonus_granted' in row else False
         )
 
 
@@ -86,7 +88,7 @@ async def create_user(
     current_plan_id: Optional[str] = None,
     current_credits: int = 100,  # 默认100积分（注册奖励）
     is_active: bool = True,
-    signup_bonus_granted: bool = True  # 注册时默认已发放奖励
+    signup_bonus_granted: bool = True  # 注册/白名单奖励是否已发放
 ) -> User:
     """
     创建新用户
@@ -213,14 +215,16 @@ async def create_user(
         current_plan_id=current_plan_id,
         current_credits=current_credits,
         plan_renew_at=None,
-        total_credits_used=0
+        total_credits_used=0,
+        signup_bonus_granted=signup_bonus_granted
     )
 
 
 async def update_user_credits(
     user_id: str,
     credits_delta: int,
-    update_total_used: bool = False
+    update_total_used: bool = False,
+    set_signup_bonus_granted: bool = False
 ) -> bool:
     """
     更新用户积分
@@ -237,23 +241,28 @@ async def update_user_credits(
                 UPDATE users
                 SET 
                     current_credits = current_credits + $1,
-                    total_credits_used = total_credits_used + $2
+                    total_credits_used = total_credits_used + $2,
+                    signup_bonus_granted = CASE WHEN $4 THEN TRUE ELSE signup_bonus_granted END
                 WHERE user_id = $3
                 """,
                 credits_delta,
                 abs(credits_delta),  # total_used 总是增加正数
-                user_id
+                user_id,
+                set_signup_bonus_granted
             )
         else:
             # 仅更新 current_credits（增加积分或不更新总使用量）
             result = await conn.execute(
                 """
                 UPDATE users
-                SET current_credits = current_credits + $1
+                SET 
+                    current_credits = current_credits + $1,
+                    signup_bonus_granted = CASE WHEN $3 THEN TRUE ELSE signup_bonus_granted END
                 WHERE user_id = $2
                 """,
                 credits_delta,
-                user_id
+                user_id,
+                set_signup_bonus_granted
             )
         
         # 检查是否有行被更新
@@ -284,7 +293,8 @@ async def get_user_by_id(user_id: str) -> Optional[User]:
                 current_plan_id,
                 current_credits,
                 plan_renew_at,
-                total_credits_used
+                total_credits_used,
+                signup_bonus_granted
             FROM users
             WHERE user_id = $1
             """,
@@ -308,7 +318,8 @@ async def get_user_by_id(user_id: str) -> Optional[User]:
             current_plan_id=row['current_plan_id'],
             current_credits=row['current_credits'] or 0,
             plan_renew_at=row['plan_renew_at'],
-            total_credits_used=row['total_credits_used'] or 0
+            total_credits_used=row['total_credits_used'] or 0,
+            signup_bonus_granted=row.get('signup_bonus_granted') if 'signup_bonus_granted' in row else False
         )
 
 

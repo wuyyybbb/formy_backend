@@ -16,6 +16,7 @@ class User(BaseModel):
     created_at: datetime = Field(default_factory=datetime.now, description="创建时间")
     last_login: Optional[datetime] = Field(None, description="最后登录时间")
     is_active: bool = Field(default=True, description="是否激活")
+    signup_bonus_granted: bool = Field(default=False, description="注册/白名单奖励是否已发放")
     
     # 密码（加密存储，可选）
     password_hash: Optional[str] = Field(None, description="密码哈希值（bcrypt）")

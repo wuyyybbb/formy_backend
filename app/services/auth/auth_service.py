@@ -153,24 +153,34 @@ class AuthService:
                 # 用户已存在，更新最后登录时间
                 user.last_login = datetime.now()
                 
-                # 检查白名单：如果用户在白名单中，确保算力至少是对应等级的额度
+                # 检查白名单：仅在未发放过奖励时补足一次
                 whitelist_credits = settings.get_whitelist_credits(email)
-                if whitelist_credits > 100 and user.current_credits < whitelist_credits:
-                    old_credits = user.current_credits
-                    user.current_credits = whitelist_credits
-                    
-                    # 判断白名单类型
-                    if settings.is_vip_whitelisted(email):
-                        print(f"🌟 VIP白名单用户登录: {email}, 算力已从 {old_credits} 补充到 {user.current_credits}")
-                    elif settings.is_trial_whitelisted(email):
-                        print(f"🎁 试用白名单用户登录: {email}, 算力已从 {old_credits} 补充到 {user.current_credits}")
-                    
-                    # 更新白名单用户的算力到数据库
-                    from app.db.crud_users import update_user_credits
-                    await update_user_credits(user.user_id, user.current_credits - old_credits, update_total_used=False)
+                if whitelist_credits > 0 and not getattr(user, "signup_bonus_granted", False):
+                    if user.current_credits < whitelist_credits:
+                        delta = whitelist_credits - user.current_credits
+                        user.current_credits = whitelist_credits
+                        from app.db.crud_users import update_user_credits
+                        await update_user_credits(
+                            user.user_id,
+                            delta,
+                            update_total_used=False,
+                            set_signup_bonus_granted=True
+                        )
+                        if settings.is_vip_whitelisted(email):
+                            print(f"🌟 VIP白名单用户首次登录补发算力: {email}, +{delta}")
+                        elif settings.is_trial_whitelisted(email):
+                            print(f"🎁 试用白名单用户首次登录补发算力: {email}, +{delta}")
+                    else:
+                        # 标记已发放，避免重复补发
+                        from app.db.crud_users import update_user_credits
+                        await update_user_credits(
+                            user.user_id,
+                            0,
+                            update_total_used=False,
+                            set_signup_bonus_granted=True
+                        )
                 else:
-                    # 普通用户登录，积分保持不变
-                    print(f"👤 普通用户登录: {email}, 当前积分: {user.current_credits}")
+                    print(f"👤 用户登录: {email}, 当前积分: {user.current_credits}")
                 
                 # 更新最后登录时间到数据库
                 from app.db import get_pool
